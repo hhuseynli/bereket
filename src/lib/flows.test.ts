@@ -1,9 +1,16 @@
 // End-to-end demo script against the real flows, in offline mode (no keys needed).
+import os from 'node:os';
+import path from 'node:path';
+// Everything below runs in its own data folder, so tests never touch the presenter's .data/.
+process.env.DEMO_DATA_DIR = path.join(os.tmpdir(), `berekat-test-${process.pid}`);
+process.env.DEMO_RESTORE = '0';
 process.env.DEMO_STEP_MS = '0';
 process.env.DEMO_RECOVERY_MS = '0';
 process.env.AI_OFFLINE = '1';
 process.env.ELEVENLABS_API_KEY = '';
 process.env.ANTHROPIC_API_KEY = '';
+process.env.DEEPSEEK_API_KEY = '';
+process.env.WHATSAPP_CHANNEL = 'simulator';
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

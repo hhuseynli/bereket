@@ -2,10 +2,37 @@
 // against real local wholesale prices before the pitch.
 import type { Buyer, Farmer, Listing, State, Tender } from './types';
 
-// Demo "now": Wednesday 11 Nov 2026, 14:00 in Baku (UTC+4).
-export const DEMO_START = '2026-11-11T10:00:00.000Z';
-export const DEADLINE = '2026-11-12T05:00:00.000Z'; // Thu 12 Nov, 09:00 Baku
-export const THURSDAY_0900 = DEADLINE;
+// ---------- Demo timeline ----------
+// The scenario plays on one "demo day" in Baku (UTC+4, no daylight saving): it opens at 14:00, the buyer
+// wants the tomatoes at 09:00 the next morning, and the seeded listings went up the day before.
+// DEMO_DATE=YYYY-MM-DD pins the day; without it the demo day is today's date in Baku, so the dates on
+// screen match the day of the pitch. Every time below is derived from that one date.
+
+const BAKU_OFFSET_H = 4;
+
+export function demoDate(): string {
+  const env = process.env.DEMO_DATE;
+  if (env && /^\d{4}-\d{2}-\d{2}$/.test(env)) return env;
+  return new Date(Date.now() + BAKU_OFFSET_H * 3600_000).toISOString().slice(0, 10);
+}
+
+/** A Baku wall-clock time on the demo day (plus dayOffset days), as a UTC ISO string. */
+export function bakuAt(dayOffset: number, hour: number, minute = 0, day = demoDate()): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + dayOffset, hour - BAKU_OFFSET_H, minute)).toISOString();
+}
+
+export function timeline(day = demoDate()) {
+  return {
+    day,
+    start: bakuAt(0, 14, 0, day), // demo "now" when the app starts or resets
+    deadline: bakuAt(1, 9, 0, day), // tender T-1042 delivery, also where T jumps the clock
+    seededAt: bakuAt(-1, 12, 0, day), // when the seeded listings were created
+    cucumberDeadline: bakuAt(3, 9, 0, day),
+  };
+}
+export const demoStart = () => timeline().start;
+export const demoDeadline = () => timeline().deadline;
 
 export const C = {
   indigo: '#263B6E',
@@ -54,6 +81,7 @@ export function seedBuyers(): Buyer[] {
 }
 
 let n = 0;
+let seedDay = '';
 const L = (
   farmerId: string, product: string, variety: string, grade: 1 | 2 | 3, qtyKg: number, priceAzn: number,
   ripeness: number, extra: Partial<Listing> = {},
@@ -62,15 +90,16 @@ const L = (
   farmerId, product, variety, grade, qtyKg, priceAzn, ripeness,
   ripenessConfidence: 0.86,
   defects: [],
-  harvest: '2026-11-11',
+  harvest: seedDay,
   status: 'live',
-  createdAt: '2026-11-10T08:00:00.000Z',
+  createdAt: timeline(seedDay).seededAt,
   source: 'seed',
   ...extra,
 });
 
-export function seedListings(): Listing[] {
+export function seedListings(day = demoDate()): Listing[] {
   n = 0;
+  seedDay = day;
   return [
     // Tomatoes, Roma, Grade 1: the candidates for tender T-1042
     L('f-gulnare', 'Tomato', 'Roma', 1, 140, 1.2, 4),
@@ -123,38 +152,42 @@ export function elsenListingFields() {
     qtyKg: 180,
     priceAzn: 1.15,
     ripeness: 4,
-    harvest: '2026-11-11',
+    harvest: demoDate(),
   };
 }
 
-export function seedTenders(): Tender[] {
+export function seedTenders(day = demoDate()): Tender[] {
+  const t = timeline(day);
   return [
     {
       id: 'T-1042', buyerId: 'b-nergiz', product: 'Tomato', variety: 'Roma', grade: 1, qtyKg: 400,
       packaging: '10 kg crates', intendedUse: 'Kitchen', useWithinDays: 3, ripenessMin: 4, ripenessMax: 5,
-      maxPriceAzn: 1.45, deadline: DEADLINE, destination: 'Nəsimi kitchen, Baku', status: 'open', proposalIds: [],
+      maxPriceAzn: 1.45, deadline: t.deadline, destination: 'Nəsimi kitchen, Baku', status: 'open', proposalIds: [],
     },
     {
       id: 'T-1043', buyerId: 'b-nergiz', product: 'Cucumber', variety: 'Local', grade: 1, qtyKg: 250,
       packaging: '10 kg crates', intendedUse: 'Kitchen', useWithinDays: 4, ripenessMin: 1, ripenessMax: 6,
-      maxPriceAzn: 1.7, deadline: '2026-11-14T05:00:00.000Z', destination: 'Nəsimi kitchen, Baku', status: 'draft', proposalIds: [],
+      maxPriceAzn: 1.7, deadline: t.cucumberDeadline, destination: 'Nəsimi kitchen, Baku', status: 'draft', proposalIds: [],
     },
   ];
 }
 
 export function initialState(): State {
+  const day = demoDate();
   return {
     version: 1,
-    clock: { base: DEMO_START, startedAtMs: Date.now() },
+    clock: { base: timeline(day).start, startedAtMs: Date.now() },
     farmers: seedFarmers(),
     buyers: seedBuyers(),
-    listings: seedListings(),
-    tenders: seedTenders(),
+    listings: seedListings(day),
+    tenders: seedTenders(day),
     proposals: [],
     orders: [],
     messages: [],
     events: [],
     aiRuns: [],
-    settings: { channel: process.env.WHATSAPP_CHANNEL === 'twilio' ? 'twilio' : 'simulator', offline: process.env.AI_OFFLINE === '1' },
+    settings: { channel: process.env.WHATSAPP_CHANNEL === 'twilio' ? 'twilio' : 'simulator', aiMode: process.env.AI_OFFLINE === '1' ? 'simulated' : process.env.AI_MODE === 'cached' || process.env.AI_MODE === 'simulated' ? process.env.AI_MODE : 'live', voiceReplies: !!process.env.ELEVENLABS_API_KEY && process.env.TTS_REPLIES !== '0' },
+    lastInboundAt: {},
+    seenSids: [],
   };
 }

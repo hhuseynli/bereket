@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { generateProposals, planRecovery } from './engine';
-import { DEMO_START, elsenListingFields, initialState } from './seed';
+import { demoStart, elsenListingFields, initialState } from './seed';
+
+const DEMO_START = demoStart();
 import type { Listing, Order, State } from './types';
 
 function demoState(): State {
