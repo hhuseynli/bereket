@@ -15,6 +15,8 @@ export const TTS_VOICE = () => process.env.TTS_VOICE_ID || 'BQgh92MxG7QAtCA8wY7O
 export const TTS_MODEL = () => process.env.TTS_MODEL || 'eleven_v4_turbo';
 export const ttsAvailable = () => !!process.env.ELEVENLABS_API_KEY && process.env.TTS_REPLIES !== '0';
 const TIMEOUT_S = () => Number(process.env.TTS_TIMEOUT_MS ?? 25_000) / 1000;
+// MP3 plays everywhere, including iPhone Safari (which is unreliable with OGG/Opus). TTS_FORMAT=ogg for Opus.
+const FORMAT = () => (process.env.TTS_FORMAT === 'ogg' ? { ext: 'ogg', api: 'opus_48000_64' as const } : { ext: 'mp3', api: 'mp3_44100_64' as const });
 
 // ---------- Azerbaijani numbers and money in words ----------
 
@@ -91,10 +93,11 @@ export function clipId(spoken: string): string {
   return crypto.createHmac('sha256', secret).update(`${TTS_MODEL()}|${TTS_VOICE()}|${spoken}`).digest('hex').slice(0, 32);
 }
 
-export function readClip(id: string): Buffer | undefined {
-  if (!/^[a-f0-9]{32}\.ogg$/.test(id)) return undefined;
+export function readClip(id: string): { buf: Buffer; mime: string } | undefined {
+  const m = id.match(/^[a-f0-9]{32}\.(ogg|mp3)$/);
+  if (!m) return undefined;
   try {
-    return fs.readFileSync(path.join(DIR(), id));
+    return { buf: fs.readFileSync(path.join(DIR(), id)), mime: m[1] === 'mp3' ? 'audio/mpeg' : 'audio/ogg' };
   } catch {
     return undefined;
   }
@@ -107,14 +110,14 @@ export const ttsHealth = () => gh.__ttsHealth;
 
 export async function synthesize(spoken: string, aiMode: AiMode): Promise<Clip | undefined> {
   if (!spoken || aiMode === 'simulated') return undefined;
-  const id = `${clipId(spoken)}.ogg`;
+  const id = `${clipId(spoken)}.${FORMAT().ext}`;
   const file = path.join(DIR(), id);
   if (fs.existsSync(file)) return { id, url: `/api/voice/${id}`, mode: 'cached' };
   if (aiMode !== 'live' || !ttsAvailable()) return undefined;
   try {
     const stream = await eleven().textToSpeech.convert(
       TTS_VOICE(),
-      { text: spoken.slice(0, 1200), modelId: TTS_MODEL(), languageCode: 'az', outputFormat: 'opus_48000_64' },
+      { text: spoken.slice(0, 1200), modelId: TTS_MODEL(), languageCode: 'az', outputFormat: FORMAT().api },
       { timeoutInSeconds: TIMEOUT_S(), maxRetries: 1 },
     );
     const buf = Buffer.from(await new Response(stream as ReadableStream).arrayBuffer());

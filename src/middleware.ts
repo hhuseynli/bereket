@@ -34,7 +34,7 @@ export function middleware(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
   if (pathname === '/api/twilio' || pathname === '/api/twilio/status') return NextResponse.next();
   // Voice-note clips: Twilio downloads them; their ids are unguessable (keyed with a secret).
-  if (/^\/api\/voice\/[a-f0-9]{32}\.ogg$/.test(pathname)) return NextResponse.next();
+  if (/^\/api\/voice\/[a-f0-9]{32}\.(ogg|mp3)$/.test(pathname)) return NextResponse.next();
   if (process.env.DEMO_PUBLIC_ACCESS === '1' || isLocal(req)) return NextResponse.next();
 
   const token = process.env.DEMO_ADMIN_TOKEN ?? '';

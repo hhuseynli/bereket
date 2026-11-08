@@ -111,7 +111,7 @@ try {
   await exp('Webhook: media from a non-Twilio host is refused (no SSRF)', twilioPost({ MessageSid: 'SMverify2', From: 'whatsapp:+15550000001', NumMedia: '1', MediaUrl0: 'http://169.254.169.254/latest', MediaContentType0: 'image/jpeg' }), 200);
   await waitFor(async () => (await state(port)).events.some((e) => /Could not download image/.test(e.title)), { what: 'media refusal logged', timeout: 8000 });
   http.push(['Refused media is reported to the operator and the farmer asked to resend', true, '']);
-  await exp('Voice clip URL reachable through a tunnel (Twilio fetches it), unknown id → 404 not 401', fetch(B + '/api/voice/' + 'a'.repeat(32) + '.ogg', { headers: remote }), 404);
+  await exp('Voice clip URL reachable through a tunnel (Twilio fetches it), unknown id → 404 not 401', fetch(B + '/api/voice/' + 'a'.repeat(32) + '.mp3', { headers: remote }), 404);
   await exp('Voice clip URL rejects anything but a clip id → 401 through a tunnel', fetch(B + '/api/voice/../state', { headers: remote }), [401, 404]);
   await exp('Status callback: signed → 204', twilioPost({ MessageSid: 'SMnone', MessageStatus: 'delivered' }, '/api/twilio/status'), 204);
   for (const [n, ok, d] of http) r.add(ok ? 'PASS' : 'FAIL', n, d);

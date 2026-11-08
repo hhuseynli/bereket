@@ -1,7 +1,8 @@
 import { readMedia } from '@/lib/ai';
+import { rangeResponse } from '@/lib/range';
 
-export function GET(_req: Request, { params }: { params: { id: string } }) {
+export function GET(req: Request, { params }: { params: { id: string } }) {
   const m = readMedia(params.id);
   if (!m) return new Response('Not found', { status: 404 });
-  return new Response(new Uint8Array(m.buf), { headers: { 'Content-Type': m.mime, 'Cache-Control': 'private, max-age=86400' } });
+  return rangeResponse(req, m.buf, m.mime);
 }
