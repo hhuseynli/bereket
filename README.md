@@ -6,6 +6,73 @@ Farmers sell through WhatsApp in Azerbaijani (voice notes, photos, one-tap repli
 operations team use one web platform with a Buyer / Operator switch. All people and businesses in the demo
 data are fictional, and escrow and payouts are simulated: no real money moves.
 
+## How it works
+
+One Node.js process holds the whole demo state and pushes every change to every screen. Farmers use a
+WhatsApp-style screen on their own phones; buyers and operators use the laptop.
+
+```mermaid
+flowchart TB
+  subgraph Screens["Screens"]
+    direction LR
+    WA["Farmer's phone<br/>WhatsApp-style chat, /wa<br/>over Wi-Fi via npm run demo:phone"]
+    BUY["Laptop: Buyer view<br/>tenders, proposals, orders"]
+    OPS["Laptop: Operator view<br/>Intake, Live map, ledger"]
+  end
+
+  subgraph Server["Laptop: one Next.js process on 127.0.0.1:3000"]
+    direction LR
+    MW["Access check<br/>presenter token for<br/>remote devices"] --> AG["agent.ts<br/>conversation,<br/>checked actions"] --> FL["flows.ts<br/>listing pipeline,<br/>orders, recovery"] --> EN["engine.ts<br/>matching, routes,<br/>costs (plain code)"]
+    FL --> ST[("store.ts<br/>shared state")]
+    FL --> CA[(".data/ai-cache<br/>verified AI results")]
+  end
+
+  subgraph AI["AI providers"]
+    direction LR
+    EL["ElevenLabs<br/>speech-to-text,<br/>voice replies"]
+    LLM["DeepSeek flash or Claude<br/>extraction, photo check, chat"]
+  end
+
+  Screens -->|"voice notes, photos, taps, clicks"| MW
+  ST -->|"live updates (Server-Sent Events)"| Screens
+  FL <-->|"LIVE calls"| AI
+  TW["Twilio WhatsApp (optional)"] -.->|"signed webhook"| MW
+```
+
+Every AI step is labelled on screen: **LIVE** (a provider call now), **CACHED** (the provider's earlier result for
+the same input) or **SIMULATED** (scripted). The matching engine is plain code: the AI never decides who is
+matched, it only reads voice notes and photos, talks to farmers and explains.
+
+What happens to one farmer message:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor F as Farmer phone
+  participant S as Server (flows + agent)
+  participant E as ElevenLabs
+  participant L as DeepSeek or Claude
+  participant U as Laptop (Intake, Live)
+
+  F->>S: Voice note + photo
+  S->>E: Speech-to-text (Azerbaijani)
+  E-->>S: Transcript
+  S->>L: Extract the listing, inspect the photo
+  L-->>S: JSON fields
+  Note over S: Checks: every number must appear in the transcript,<br/>cost price is not the selling price, product names normalised
+  S-->>U: Pipeline steps, each tagged LIVE / CACHED / SIMULATED
+  S-->>F: Listing card with Təsdiq / Düzəliş
+  S->>E: Text-to-speech
+  E-->>S: Azerbaijani voice note
+  S-->>F: Voice note
+  F->>S: "yox, qiymət 1 manat 40 qəpik olsun"
+  S->>L: Chat turn with the situation (draft, prices, history)
+  L-->>S: One proposed action and a reply
+  Note over S: Is the action allowed now? Did the farmer say that number?<br/>Only then apply it
+  S-->>F: "Düzəltdim: qiymət 1.40 ₼/kq" and the updated card
+  S-->>U: Correction shown on Intake
+```
+
 ## Run it
 
 ```bash
