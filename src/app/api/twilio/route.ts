@@ -1,48 +1,46 @@
-import { saveMedia } from '@/lib/ai';
-import { handleInbound } from '@/lib/flows';
-import { emit, getState, uid } from '@/lib/store';
-import { C } from '@/lib/seed';
+import { enqueueInbound } from '@/lib/inbox';
+import { emit, getState, ledger } from '@/lib/store';
+import { maskPhone, phoneMap, validateTwilioRequest } from '@/lib/twilio';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-// Twilio WhatsApp webhook ("When a message comes in"). We answer with empty TwiML at once and reply
-// through the REST API after the AI has worked, so slow calls never hit Twilio's webhook timeout.
+const EMPTY = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+const twiml = (status = 200) => new Response(EMPTY, { status, headers: { 'Content-Type': 'text/xml' } });
+
+// Twilio WhatsApp webhook ("When a message comes in"). The request is checked against Twilio's signature,
+// only farmers listed in FARMER_PHONES are accepted, retries are dropped by MessageSid, and the message is
+// queued durably before we answer, so slow AI calls never hit Twilio's timeout and nothing is lost on restart.
 export async function POST(req: Request) {
-  const form = await req.formData();
-  const from = String(form.get('From') ?? '').replace('whatsapp:', '');
-  const body = String(form.get('Body') ?? '').trim();
-  const numMedia = Number(form.get('NumMedia') ?? 0);
-  const s = getState();
-  let f = s.farmers.find((x) => x.phone === from);
-  if (!f) {
-    // Unknown number: register them as a new farmer near Quba so they can try the flow.
-    f = {
-      id: uid('f'), name: String(form.get('ProfileName') ?? 'New farmer'), village: 'Quba', region: 'Quba',
-      lat: 41.36, lng: 48.51, rating: 0, deals: 0, color: C.teal, phone: from,
-    };
-    s.farmers.push(f);
-    emit();
+  const raw = await req.text();
+  const params = new URLSearchParams(raw);
+  const check = validateTwilioRequest(req, params);
+  if (!check.ok) {
+    console.warn(`[twilio] rejected webhook: ${check.reason}`);
+    return new Response('Forbidden', { status: 403 });
   }
-  const farmerId = f.id;
 
-  const work = async () => {
-    const sid = process.env.TWILIO_ACCOUNT_SID ?? '';
-    const token = process.env.TWILIO_AUTH_TOKEN ?? '';
-    const auth = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
-    const inb: Parameters<typeof handleInbound>[0] = { farmerId, via: 'twilio' };
-    for (let i = 0; i < numMedia; i++) {
-      const url = String(form.get(`MediaUrl${i}`));
-      const mime = String(form.get(`MediaContentType${i}`) ?? '');
-      const res = await fetch(url, { headers: { Authorization: auth }, redirect: 'follow' });
-      if (!res.ok) { console.error('media download failed', res.status); continue; }
-      const buf = Buffer.from(await res.arrayBuffer());
-      const local = saveMedia(buf, mime);
-      if (mime.startsWith('audio/')) inb.audio = { buf, mime, url: local };
-      else if (mime.startsWith('image/')) inb.photo = { buf, mime, url: local };
-    }
-    if (body) inb.text = body;
-    await handleInbound(inb);
-  };
-  work().catch((err) => console.error('twilio inbound failed', err));
-  return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', { headers: { 'Content-Type': 'text/xml' } });
+  const sid = params.get('MessageSid') ?? params.get('SmsMessageSid') ?? '';
+  const from = (params.get('From') ?? '').replace('whatsapp:', '');
+  const s = getState();
+  if (!sid) return twiml(400);
+  if (s.seenSids.includes(sid)) return twiml(); // Twilio retry: already queued
+
+  const farmerId = phoneMap().get(from);
+  if (!farmerId) {
+    // Not a registered demo farmer: never auto-register strangers who find the sandbox number.
+    console.warn(`[twilio] ignored message from unregistered number ${maskPhone(from)}`);
+    ledger({ type: 'system', tone: 'alert', title: 'Ignored WhatsApp from an unregistered number', detail: `${maskPhone(from)} is not in FARMER_PHONES` });
+    emit();
+    return twiml();
+  }
+
+  s.seenSids.push(sid);
+  if (s.seenSids.length > 500) s.seenSids.splice(0, s.seenSids.length - 500);
+  s.lastInboundAt[farmerId] = Date.now();
+  const obj: Record<string, string> = {};
+  for (const [k, v] of params) obj[k] = v;
+  enqueueInbound({ sid, farmerId, receivedAt: Date.now(), params: obj });
+  emit();
+  return twiml();
 }

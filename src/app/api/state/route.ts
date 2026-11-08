@@ -1,12 +1,16 @@
-import { getState } from '@/lib/store';
 import { hasClaude, hasElevenLabs } from '@/lib/ai';
+import { readiness } from '@/lib/presenter';
+import { publicState } from '@/lib/store';
+import { twilioConfigured } from '@/lib/twilio';
+import { resumeInbox } from '@/lib/inbox';
 
 export const dynamic = 'force-dynamic';
 
 export function GET() {
-  const s = getState();
+  resumeInbox();
   return Response.json({
-    ...s,
-    keys: { claude: hasClaude(), elevenlabs: hasElevenLabs(), twilio: !!process.env.TWILIO_ACCOUNT_SID },
+    ...publicState(),
+    keys: { claude: hasClaude(), elevenlabs: hasElevenLabs(), twilio: twilioConfigured() },
+    presenter: readiness(),
   });
 }
