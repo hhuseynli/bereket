@@ -20,6 +20,9 @@ export function hoursUntil(fromIso: string, toIso: string): number {
 }
 
 const isUnsafe = (l: Listing) => l.defects.some((d) => /spoil|rot|mould|mold|xarab/i.test(d));
+// Tomato matching depends on ripeness from the photo; a lot with no photo yet (confidence 0) waits for one.
+const RIPENESS_MATTERS = new Set(['Tomato']);
+const ripenessUnknown = (l: Listing) => RIPENESS_MATTERS.has(l.product) && !l.ripenessConfidence;
 
 export function candidatesFor(state: State, tender: Tender, nowIso: string, excludeListingIds: string[] = []): Candidate[] {
   const hours = hoursUntil(nowIso, tender.deadline);
@@ -31,6 +34,7 @@ export function candidatesFor(state: State, tender: Tender, nowIso: string, excl
         l.variety === tender.variety &&
         l.grade <= tender.grade &&
         !isUnsafe(l) &&
+        !ripenessUnknown(l) &&
         !excludeListingIds.includes(l.id),
     )
     .map((listing) => {
