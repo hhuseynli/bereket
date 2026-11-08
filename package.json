@@ -6,17 +6,39 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test": "tsx --test src/lib/engine.test.ts src/lib/flows.test.ts"
+    "test": "tsx --test src/lib/engine.test.ts src/lib/flows.test.ts",
+    "test:readiness": "tsx --test src/lib/readiness.test.ts",
+    "typecheck": "tsc --noEmit",
+    "demo:setup": "node scripts/demo/setup.mjs",
+    "demo:doctor": "node scripts/demo/doctor.mjs",
+    "demo:verify": "node scripts/demo/verify.mjs",
+    "demo:assets": "node scripts/demo/assets.mjs",
+    "demo:tunnel": "node scripts/demo/tunnel.mjs",
+    "demo:launch": "node scripts/demo/launch.mjs",
+    "demo:stop": "node scripts/demo/stop.mjs",
+    "demo:reset": "node scripts/demo/reset.mjs",
+    "demo:mode": "node scripts/demo/mode.mjs",
+    "demo:rehearse": "node scripts/demo/rehearse.mjs",
+    "demo:fallback": "node scripts/demo/fallback.mjs",
+    "demo:whatsapp-test": "node scripts/demo/whatsapp-test.mjs",
+    "demo:phone": "node scripts/demo/phone.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@elevenlabs/elevenlabs-js": "^2.77.0",
+    "@fontsource/source-sans-3": "^5.3.1",
+    "@fontsource/source-serif-4": "^5.3.1",
     "next": "14.2.35",
+    "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@types/node": "20.14.10",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "playwright-core": "^1.65.0",
     "tsx": "4.16.2",
     "typescript": "5.5.3"
   }

@@ -4,3 +4,17 @@ node_modules
 .env.local
 *.tsbuildinfo
 next-env.d.ts
+# Local secrets written by `elevenlabs onboard`
+/.env.local
+
+# Demo recordings and photos (people's voices): kept local, not in the public repo
+public/demo/*.ogg
+public/demo/*.mp3
+public/demo/*.m4a
+public/demo/*.webm
+public/demo/*.wav
+public/demo/*.jpg
+public/demo/*.jpeg
+public/demo/*.png
+public/demo/originals/
+.DS_Store
