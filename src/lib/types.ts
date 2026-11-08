@@ -51,6 +51,7 @@ export interface Listing {
   audioUrl?: string;
   transcriptAz?: string;
   transcriptEn?: string;
+  notes?: string; // extra facts for buyers, in English (timing, delivery wishes)
   createdAt: string;
   source: 'seed' | 'whatsapp';
   aiRunId?: string;
@@ -185,7 +186,15 @@ export interface Message {
   };
   at: string;
   via: 'simulator' | 'twilio';
-  delivery?: 'queued' | 'sent' | 'failed' | 'local';
+  delivery?: 'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'local';
+  ai?: 'live' | 'cached' | 'simulated'; // a reply written by the conversational assistant, and how
+  voiceUrl?: string; // the same reply as an Azerbaijani voice note (text-to-speech)
+  voiceMode?: 'live' | 'cached';
+  voicePending?: boolean;
+  voiceSid?: string;
+  voiceDelivery?: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+  deliveryError?: string; // Twilio error, shown to the presenter
+  sid?: string; // Twilio message SID
 }
 
 export interface LedgerEvent {
@@ -205,6 +214,8 @@ export interface AiStep {
   status: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
   output?: string;
   ms?: number;
+  mode?: 'live' | 'cached' | 'simulated'; // which kind of result this step used
+  note?: string; // why a fallback was used
 }
 
 export interface AiRun {
@@ -222,14 +233,17 @@ export interface AiRun {
   listingId?: string;
   photoUrl?: string;
   audioUrl?: string;
-  mode: 'live' | 'cached' | 'mock';
+  mode: 'live' | 'cached' | 'simulated' | 'mixed';
   status: 'running' | 'done' | 'needs_review' | 'failed';
   note?: string;
+  waitingFor?: string; // what the assistant is waiting for from the farmer, shown on Intake
+  edits?: { field: string; from?: string; to: string; by: 'farmer' | 'operator'; at: string; quote?: string }[];
 }
 
 export interface Settings {
   channel: 'simulator' | 'twilio';
-  offline: boolean; // use cached / mock AI only
+  aiMode: 'live' | 'cached' | 'simulated'; // live provider, cached verified results, or scripted fallback
+  voiceReplies: boolean; // the assistant also answers with Azerbaijani voice notes
 }
 
 export interface State {
@@ -245,4 +259,8 @@ export interface State {
   events: LedgerEvent[];
   aiRuns: AiRun[];
   settings: Settings;
+  /** Real wall-clock time of each farmer's last WhatsApp message (for the 24-hour session window). */
+  lastInboundAt: Record<string, number>;
+  /** Twilio MessageSids already handled, so a retried webhook is not processed twice. */
+  seenSids: string[];
 }

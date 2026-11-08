@@ -5,8 +5,13 @@ import { Shell } from '@/components/Shell';
 import { bakuTime, Medallion, RipenessScale, Thread } from '@/components/ui';
 import type { AiRun, AiStep } from '@/lib/types';
 
-const FIELD_LABEL: Record<string, string> = { product: 'Product', variety: 'Variety', qtyKg: 'Quantity (kg)', priceAzn: 'Price (₼/kg)', grade: 'Grade', harvest: 'Harvest' };
-const MODE: Record<AiRun['mode'], string> = { live: 'Live AI', cached: 'Cached AI result', mock: 'Scripted (offline)' };
+const FIELD_LABEL: Record<string, string> = { product: 'Product', variety: 'Variety', qtyKg: 'Quantity (kg)', priceAzn: 'Price (₼/kg)', grade: 'Grade', harvest: 'Harvest', notes: 'Notes', photo: 'Photo' };
+const MODE: Record<AiRun['mode'], string> = { live: 'Live AI', cached: 'Cached AI result (verified earlier)', simulated: 'Simulated (scripted)', mixed: 'Mixed: live, cached or simulated per step' };
+const STEP_MODE: Record<NonNullable<AiStep['mode']>, { label: string; color: string }> = {
+  live: { label: 'LIVE', color: 'var(--olive-ink)' },
+  cached: { label: 'CACHED', color: 'var(--indigo)' },
+  simulated: { label: 'SIMULATED', color: 'var(--saffron)' },
+};
 
 export default function Intake() {
   const { s, act } = useLive();
@@ -16,6 +21,9 @@ export default function Intake() {
   const run = runs.find((r) => r.id === sel) ?? runs[0];
   const f = run ? s.farmers.find((x) => x.id === run.farmerId) : undefined;
   const listing = run?.listingId ? s.listings.find((l) => l.id === run.listingId) : undefined;
+  // The label follows the steps that have run so far, so it is right while the run is still going.
+  const stepModes = run ? Array.from(new Set(run.steps.map((x) => x.mode).filter(Boolean))) : [];
+  const modeLabel = !run ? '' : stepModes.length === 0 ? 'In progress' : stepModes.length === 1 ? MODE[stepModes[0]!] : MODE.mixed;
 
   return (
     <Shell perspective="operator" active="intake">
@@ -50,7 +58,7 @@ export default function Intake() {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div className="eyebrow" style={{ color: 'var(--indigo)' }}>AI intake · {MODE[run.mode]}</div>
+                  <div className="eyebrow" style={{ color: 'var(--indigo)' }}>AI intake · {modeLabel}</div>
                   <h1 className="serif" style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.015em' }}>{f.name}, {f.village}</h1>
                 </div>
                 {run.status === 'needs_review' && listing && (listing.status === 'draft' || listing.status === 'needs_review') && (
@@ -61,6 +69,12 @@ export default function Intake() {
                 )}
               </div>
               {run.note && <div className="card" style={{ padding: '14px 18px', boxShadow: 'inset 0 0 0 1px var(--saffron)' }}>{run.note}</div>}
+              {run.waitingFor && run.status !== 'failed' && (
+                <div className="fade-up" data-waiting style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--ink2)' }}>
+                  <span className="blink" style={{ width: 8, height: 8, borderRadius: 4, background: 'var(--indigo)', flex: 'none' }} />
+                  Waiting for {f.name.split(' ')[0]}: {run.waitingFor}
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
                 <ol aria-label="Steps" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
@@ -83,7 +97,7 @@ export default function Intake() {
                         <>
                           <RipenessScale stage={run.ripeness} />
                           <div className="muted" style={{ fontSize: 13 }}>
-                            Estimated from the photo, {Math.round((run.ripenessConfidence ?? 0) * 100)}% confidence{run.defects?.length ? ` · ${run.defects.join(', ')}` : ' · no visible defects'}. Checked again by the driver at pickup.
+                            Visual estimate from the photo, {Math.round((run.ripenessConfidence ?? 0) * 100)}% confidence{run.defects?.length ? ` · ${run.defects.join(', ')}` : ' · no visible defects'}. Not a food-safety certification; checked again by the driver at pickup.
                           </div>
                         </>
                       )}
@@ -100,7 +114,25 @@ export default function Intake() {
                           </span>
                         </div>
                       ))}
+                      {listing?.notes && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--hair2)' }}>
+                          <span className="muted" style={{ fontSize: 13 }}>Notes</span>
+                          <span style={{ fontSize: 14 }}>{listing.notes}</span>
+                        </div>
+                      )}
                       {run.priceNote && <div className="note" style={{ fontSize: 14, paddingTop: 10 }}>{run.priceNote}.</div>}
+                      {run.edits && run.edits.length > 0 && (
+                        <div aria-label="Corrections" style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 12 }}>
+                          <div className="eyebrow muted" style={{ fontSize: 10.5 }}>Corrected in the chat</div>
+                          {run.edits.slice(-5).map((e, i) => (
+                            <div key={i} style={{ fontSize: 13.5 }}>
+                              <b>{FIELD_LABEL[e.field] ?? e.field}</b> {e.from ? <><span className="muted" style={{ textDecoration: 'line-through' }}>{e.from}</span> → </> : ''}<b className="num">{e.to}</b>
+                              <span className="muted"> · by {e.by === 'farmer' ? f.name.split(' ')[0] : 'operator'}</span>
+                              {e.quote && <span className="note" style={{ display: 'block', fontSize: 13 }}>“{e.quote}”</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   {listing && (
@@ -129,8 +161,16 @@ function Step({ st, last }: { st: AiStep; last: boolean }) {
         {!last && <span style={{ flex: 1, width: 0, borderLeft: st.status === 'done' ? '2px solid var(--olive)' : '2px dashed var(--line)', minHeight: 26 }} />}
       </div>
       <div style={{ paddingBottom: last ? 0 : 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ fontWeight: 600, color: st.status === 'pending' ? 'var(--muted)' : 'var(--soot)' }}>{st.label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: st.status === 'pending' ? 'var(--muted)' : 'var(--soot)' }}>{st.label}</span>
+          {st.mode && (
+            <span className="chip" data-step-mode={st.mode} title={st.note ?? undefined} style={{ height: 20, fontSize: 10.5, color: STEP_MODE[st.mode].color, boxShadow: `inset 0 0 0 1px ${STEP_MODE[st.mode].color}` }}>
+              {STEP_MODE[st.mode].label}
+            </span>
+          )}
+        </div>
         {st.output && <div className={st.key === 'transcribe' ? 'note' : 'muted'} style={{ fontSize: 14 }}>{st.key === 'transcribe' && st.output.length > 90 ? `${st.output.slice(0, 90)}…` : st.output}</div>}
+        {st.note && st.mode !== 'live' && <div className="muted" style={{ fontSize: 12 }}>Fallback: {st.note}</div>}
         {st.status === 'running' && <div className="muted" style={{ fontSize: 13 }}>Working…</div>}
         {st.status === 'skipped' && !st.output && <div className="muted" style={{ fontSize: 13 }}>Skipped</div>}
       </div>
