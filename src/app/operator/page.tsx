@@ -37,7 +37,7 @@ export default function Live() {
 
   return (
     <Shell perspective="operator" active="live">
-      <div style={{ height: '100%', minHeight: 640, display: 'grid', gridTemplateColumns: '300px minmax(0, 1fr) 400px' }}>
+      <div className="live-grid" style={{ height: '100%', minHeight: 640, display: 'grid' }}>
         {/* Ledger */}
         <section aria-label="Live ledger" className="scroll" style={{ borderRight: '1px solid var(--hair)', background: 'var(--paper)', padding: '26px 22px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <h2 className="serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>Live ledger</h2>

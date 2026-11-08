@@ -84,3 +84,11 @@ h1, h2, h3 { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* Layout widths, narrowed for 1366×768 projectors so the Live map keeps room. */
+.phone-dock { width: 400px; }
+.live-grid { grid-template-columns: 300px minmax(0, 1fr) 400px; }
+@media (max-width: 1500px) {
+  .phone-dock { width: 360px; }
+  .live-grid { grid-template-columns: 250px minmax(0, 1fr) 350px; }
+}

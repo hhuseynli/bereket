@@ -1,4 +1,14 @@
 import type { Metadata } from 'next';
+// Fonts ship with the app (SIL Open Font License, via Fontsource), so the UI looks the same with no internet.
+// The latin-ext subsets cover Azerbaijani: Ə ə Ğ ğ I ı İ Ö ö Ş ş Ü ü Ç ç, and the manat sign ₼.
+import '@fontsource/source-sans-3/400.css';
+import '@fontsource/source-sans-3/500.css';
+import '@fontsource/source-sans-3/600.css';
+import '@fontsource/source-sans-3/700.css';
+import '@fontsource/source-serif-4/400.css';
+import '@fontsource/source-serif-4/400-italic.css';
+import '@fontsource/source-serif-4/600.css';
+import '@fontsource/source-serif-4/600-italic.css';
 import './globals.css';
 import { LiveProvider } from '@/components/live';
 
@@ -11,13 +21,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
-        />
         <link rel="icon" href="/icon.svg" />
       </head>
       <body>

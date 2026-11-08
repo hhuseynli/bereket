@@ -1,9 +1,10 @@
 'use client';
 // Client side of the shared state: one fetch, then refetch whenever the server's version changes (SSE).
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import type { Readiness } from '@/lib/presenter';
 import type { State } from '@/lib/types';
 
-export type LiveState = State & { keys: { claude: boolean; elevenlabs: boolean; twilio: boolean } };
+export type LiveState = State & { keys: { claude: boolean; elevenlabs: boolean; twilio: boolean }; presenter: Readiness };
 
 interface Ctx {
   s: LiveState | null;
@@ -38,7 +39,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     fetching.current = true;
     try {
       const res = await fetch('/api/state', { cache: 'no-store' });
-      setS(await res.json());
+      if (res.ok) setS(await res.json());
+    } catch {
+      /* server restarting: the SSE reconnect triggers another refresh */
     } finally {
       fetching.current = false;
       if (again.current) { again.current = false; void refresh(); }
