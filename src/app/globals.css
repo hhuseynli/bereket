@@ -1,0 +1,86 @@
+:root {
+  --bone: #f4eee3;
+  --paper: #fbf8f2;
+  --paper2: #f8f3ea;
+  --soot: #1f1b16;
+  --ink2: #3a342b;
+  --muted: #5f574a;
+  --hair: #ddd2be;
+  --hair2: #e5dac6;
+  --line: #cdbfa5;
+  --madder: #8c2b1f;
+  --indigo: #263b6e;
+  --saffron: #c08a2a;
+  --olive: #5c6b34;
+  --olive-ink: #4e5c2b;
+  --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --sans: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bone);
+  color: var(--soot);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; }
+.serif { font-family: var(--serif); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.note { font-family: var(--serif); font-style: italic; color: #2b2620; }
+
+.btn {
+  height: 46px; padding: 0 22px; border: 0; border-radius: 2px; cursor: pointer;
+  font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform 0.08s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--soot); color: var(--paper); }
+.btn-primary:hover:not(:disabled) { background: #000; }
+.btn-indigo { background: var(--indigo); color: var(--paper); }
+.btn-indigo:hover:not(:disabled) { background: #1c2e57; }
+.btn-ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--soot); }
+.btn-ghost:hover:not(:disabled) { background: rgba(31, 27, 22, 0.05); }
+.btn-sm { height: 36px; padding: 0 14px; font-size: 14px; }
+
+.card { background: var(--paper); box-shadow: 0 0 0 1px var(--hair); border-radius: 3px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 2px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap;
+}
+.link { font-weight: 600; border-bottom: 1px solid currentColor; padding-bottom: 1px; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; }
+
+.rule { height: 1px; background: var(--hair2); }
+
+/* Motion: a few deliberate moments, nothing scattered. */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp 0.45s ease both; }
+@keyframes weaveIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.weave-in { transform-origin: left center; animation: weaveIn 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes threadSlide { 0% { transform: translateX(-102%); } 55% { transform: translateX(0); } 100% { transform: translateX(0); } }
+@keyframes stitch { from { stroke-dashoffset: 600; } to { stroke-dashoffset: 0; } }
+@keyframes pulseRing { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(1.8); opacity: 0; } }
+.pulse { transform-box: fill-box; transform-origin: center; animation: pulseRing 1.6s ease-out infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+.blink { animation: blink 1s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1.2s linear infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes flash { 0% { background: rgba(140, 43, 31, 0.22); } 100% { background: rgba(140, 43, 31, 0.07); } }
+.flash { animation: flash 1.4s ease-out both; }
+
+.scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+.kbd { display: inline-flex; min-width: 22px; height: 22px; padding: 0 6px; align-items: center; justify-content: center; border-radius: 3px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line); font-size: 12px; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
