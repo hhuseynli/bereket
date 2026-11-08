@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// npm run demo:phone [-- start|stop|status]
+// npm run demo:phone [-- start|stop|status] [-- --tunnel] [-- --ip]
 // Lets real phones on the same Wi-Fi open the farmer's WhatsApp-style screen (/wa). Starts an HTTPS relay on
 // port 3443 with a self-signed certificate for this laptop's IP (phones only allow the microphone over HTTPS),
 // prints a QR code per farmer, and writes .data/phone.json for the /connect page. Nothing leaves the local network.
@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import QRCode from 'qrcode';
-import { DATA, LOGS, PORT, ROOT, Report, alive, args, bold, dim, green, healthy, loadEnv, portFree, readPid, sleep, stopPid, writePid, yellow } from './lib.mjs';
+import { DATA, LOGS, PORT, ROOT, Report, alive, args, bold, dim, green, healthy, loadEnv, portFree, readPid, run, sleep, stopPid, tunnelInfo, writePid, yellow } from './lib.mjs';
 
 const a = args();
 const cmd = a._[0] ?? 'start';
@@ -31,14 +31,26 @@ export function lanIp() {
   return undefined;
 }
 
-function ensureCert(ip) {
+/** This Mac's Bonjour name (e.g. huseyns-macbook.local): iPhones on the same network find it even when the IP changes. */
+export function localName() {
+  try {
+    const n = execFileSync('scutil', ['--get', 'LocalHostName'], { encoding: 'utf8' }).trim();
+    return n ? `${n}.local` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ensureCert(ip, name) {
   fs.mkdirSync(CERT_DIR, { recursive: true });
   const cert = path.join(CERT_DIR, 'cert.pem');
   const key = path.join(CERT_DIR, 'key.pem');
   const ipFile = path.join(CERT_DIR, 'ip.txt');
-  if (fs.existsSync(cert) && fs.existsSync(key) && fs.readFileSync(ipFile, 'utf8').trim() === ip) return { cert, key, fresh: false };
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '30', '-subj', '/CN=BEREKET demo', '-addext', `subjectAltName=IP:${ip},DNS:localhost`], { stdio: 'ignore' });
-  fs.writeFileSync(ipFile, ip);
+  const tag = `${ip}|${name ?? ''}`;
+  if (fs.existsSync(cert) && fs.existsSync(key) && fs.existsSync(ipFile) && fs.readFileSync(ipFile, 'utf8').trim() === tag) return { cert, key, fresh: false };
+  const san = [`IP:${ip}`, 'DNS:localhost', ...(name ? [`DNS:${name}`] : [])].join(',');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '30', '-subj', '/CN=BEREKET demo', '-addext', `subjectAltName=${san}`], { stdio: 'ignore' });
+  fs.writeFileSync(ipFile, tag);
   fs.chmodSync(key, 0o600);
   return { cert, key, fresh: true };
 }
@@ -49,21 +61,54 @@ async function stop() {
   console.log(s ? 'Phone access stopped.' : 'Phone access was not running.');
 }
 
+/**
+ * Through the public tunnel instead of the local network: for Wi-Fi that isolates devices (hotels, venues) or a
+ * phone on mobile data. Real HTTPS (no warning, microphone works); the presenter token in the link still applies.
+ */
+async function startViaTunnel(env) {
+  const r = new Report('Phones through the internet (tunnel)');
+  let t = tunnelInfo();
+  if (!t?.running) {
+    const res = await run(process.execPath, [path.join(ROOT, 'scripts/demo/tunnel.mjs')], { quiet: true });
+    t = tunnelInfo();
+    if (!t?.running) { r.fail('Tunnel', res.out.split('\n').filter((l) => /FAIL|error/i.test(l)).join(' ') || 'did not start'); return r.summary(); }
+  }
+  r.pass('Tunnel', t.url);
+  const info = { mode: 'tunnel', host: new URL(t.url).host, base: t.url, startedAt: new Date().toISOString() };
+  fs.writeFileSync(INFO, JSON.stringify(info, null, 2));
+  try {
+    const out = execFileSync('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '15', `${t.url}/api/state`], { encoding: 'utf8' });
+    out === '401' ? r.pass('Tunnel check', 'reaches the app and requires the token') : r.warn('Tunnel check', `HTTP ${out} (a new tunnel can take a few seconds)`);
+  } catch { r.warn('Tunnel check', 'no answer yet'); }
+  console.log(`\n${bold('On each phone')} ${dim('(any network: hotel Wi-Fi, mobile data)')}: scan the code. No certificate warning.\n`);
+  for (const [id, name, role] of FARMERS.slice(0, a.all ? 4 : 3)) {
+    console.log(`${bold(name)} ${dim(`— ${role}`)}`);
+    console.log(await QRCode.toString(`${t.url}/wa/${id}?key=${env.DEMO_ADMIN_TOKEN}`, { type: 'terminal', small: true }));
+  }
+  console.log(`${green('Also on the laptop:')} http://localhost:${PORT}/connect`);
+  console.log(dim('  Stop: npm run demo:phone -- stop (the tunnel: npm run demo:tunnel -- stop)'));
+  return r.summary();
+}
+
 async function start() {
   const env = loadEnv();
+  if (a.tunnel) return startViaTunnel(env);
   const r = new Report('Phones on the local network');
   if (!(await healthy(PORT))) r.warn('App', 'not running yet: start it with npm run demo:launch (phones will wait)');
   if (!env.DEMO_ADMIN_TOKEN) { r.fail('Presenter token', 'missing: run npm run demo:setup'); return r.summary(); }
-  const ip = a.ip ?? lanIp();
+  const ip = (typeof a.ip === 'string' ? a.ip : undefined) ?? lanIp();
+  // Links use the Mac's .local name unless --ip is given: they keep working when the Wi-Fi hands out a new address.
+  const name = a.ip ? undefined : localName();
+  const host = name ?? ip;
   if (!ip) { r.fail('Wi-Fi', 'no local network address found: connect the laptop to Wi-Fi (or the phone hotspot)'); return r.summary(); }
   const prev = readPid('phone');
   let info = fs.existsSync(INFO) ? JSON.parse(fs.readFileSync(INFO, 'utf8')) : undefined;
-  if (prev && alive(prev.pid) && info?.ip === ip) r.pass('HTTPS relay', `already running on ${info.base}`);
+  if (prev && alive(prev.pid) && info?.ip === ip && info?.host === host) r.pass('HTTPS relay', `already running on ${info.base}`);
   else {
     if (prev) await stopPid('phone');
     if (!(await portFree(HTTPS_PORT, '0.0.0.0'))) { r.fail(`Port ${HTTPS_PORT}`, 'in use'); return r.summary(); }
-    const { cert, key, fresh } = ensureCert(ip);
-    r.pass('Certificate', `${fresh ? 'created' : 'reused'} for ${ip} (self-signed: phones show a one-time warning)`);
+    const { cert, key, fresh } = ensureCert(ip, name);
+    r.pass('Certificate', `${fresh ? 'created' : 'reused'} for ${name ? `${name} and ` : ''}${ip} (self-signed: phones show a one-time warning)`);
     fs.mkdirSync(LOGS, { recursive: true });
     const fd = fs.openSync(path.join(LOGS, 'phone-proxy.log'), 'a');
     const p = spawn(process.execPath, [path.join(ROOT, 'scripts/demo/lan-proxy.mjs'), cert, key, String(HTTPS_PORT), String(PORT)], { detached: true, stdio: ['ignore', fd, fd] });
@@ -71,9 +116,9 @@ async function start() {
     await sleep(600);
     if (!alive(p.pid)) { r.fail('HTTPS relay', 'did not start: see .data/logs/phone-proxy.log'); return r.summary(); }
     writePid('phone', { pid: p.pid, startedAt: new Date().toISOString() });
-    info = { ip, port: HTTPS_PORT, base: `https://${ip}:${HTTPS_PORT}`, pid: p.pid, startedAt: new Date().toISOString() };
+    info = { ip, host, port: HTTPS_PORT, base: `https://${host}:${HTTPS_PORT}`, fallback: `https://${ip}:${HTTPS_PORT}`, pid: p.pid, startedAt: new Date().toISOString() };
     fs.writeFileSync(INFO, JSON.stringify(info, null, 2));
-    r.pass('HTTPS relay', `${info.base} → the app (local network only)`);
+    r.pass('HTTPS relay', `${info.base} → the app (local network only)${name ? `; if a phone cannot find ${name}, use ${info.fallback}` : ''}`);
   }
   // Check the relay end to end, as a phone would (anonymous → 401).
   try {
@@ -99,7 +144,8 @@ async function start() {
 async function status() {
   const p = readPid('phone');
   const info = fs.existsSync(INFO) ? JSON.parse(fs.readFileSync(INFO, 'utf8')) : undefined;
-  if (p && alive(p.pid) && info) console.log(`Phone access running: ${info.base} (pid ${p.pid}). Current Wi-Fi address: ${lanIp() ?? 'none'}${lanIp() !== info.ip ? ' — CHANGED, run npm run demo:phone again' : ''}`);
+  if (info?.mode === 'tunnel') { const t = tunnelInfo(); console.log(t?.running ? `Phone access through the tunnel: ${info.base}` : 'Tunnel for phones is not running (npm run demo:phone -- --tunnel).'); return true; }
+  if (p && alive(p.pid) && info) console.log(`Phone access running: ${info.base} (pid ${p.pid}). Current Wi-Fi address: ${lanIp() ?? 'none'}${lanIp() !== info.ip ? (info.host?.endsWith('.local') ? ' (changed; the .local link still works)' : ' — CHANGED, run npm run demo:phone again') : ''}`);
   else console.log('Phone access not running (npm run demo:phone).');
   return true;
 }

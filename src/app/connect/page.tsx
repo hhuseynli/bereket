@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Shell } from '@/components/Shell';
 
-interface Pair { running: boolean; base?: string; ip?: string; links?: { farmerId: string; name: string; url: string; svg: string }[] }
+interface Pair { running: boolean; base?: string; ip?: string; fallback?: string; links?: { farmerId: string; name: string; url: string; svg: string }[] }
 const ROLE: Record<string, string> = { 'f-elsen': 'Acts 1, 2, 4: sells tomatoes', 'f-rauf': 'Act 3: cancels', 'f-sebine': 'Act 3: backup farmer', 'f-gulnare': 'Act 2: optional' };
 
 export default function Connect() {
@@ -44,6 +44,7 @@ export default function Connect() {
             ))}
           </div>
         )}
+        {p?.running && p.fallback && <div className="muted" style={{ fontSize: 13 }}>Links use this Mac&apos;s network name, so they keep working if the Wi-Fi address changes. A phone that cannot find this name (some Android phones): run <code>npm run demo:phone -- --ip</code> for codes that use the address <code>{p.fallback}</code> instead.</div>}
         {p?.running && <div className="muted" style={{ fontSize: 13 }}>Venue Wi-Fi that blocks devices from seeing each other: connect the laptop to a phone hotspot and run <code>npm run demo:phone</code> again.</div>}
       </div>
     </Shell>

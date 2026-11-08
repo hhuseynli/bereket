@@ -30,7 +30,7 @@ async function ngrokReady() {
 async function startCloudflared(port, log) {
   const empty = path.join(DATA, 'run', 'cloudflared-quick.yml');
   fs.mkdirSync(path.dirname(empty), { recursive: true });
-  fs.writeFileSync(empty, '# Empty on purpose: anonymous quick tunnel, never a named tunnel.\n');
+  fs.writeFileSync(empty, '# Anonymous quick tunnel only: no tunnel name, no credentials.\nno-autoupdate: true\n');
   const fd = fs.openSync(log, 'w');
   const p = spawn(which('cloudflared'), ['tunnel', '--config', empty, '--no-autoupdate', '--url', `http://127.0.0.1:${port}`], { detached: true, stdio: ['ignore', fd, fd] });
   p.unref();

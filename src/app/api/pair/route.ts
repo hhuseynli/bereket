@@ -10,7 +10,7 @@ const PHONES = ['f-elsen', 'f-rauf', 'f-sebine', 'f-gulnare'];
 // Links and QR codes for phones on the local network (written by `npm run demo:phone`). The links carry the
 // presenter token, so this route is only reachable from the laptop itself or by someone who already has it.
 export async function GET() {
-  let info: { base: string; ip: string };
+  let info: { base: string; ip: string; fallback?: string };
   try {
     info = JSON.parse(fs.readFileSync(dataDir('phone.json'), 'utf8'));
   } catch {
@@ -24,5 +24,5 @@ export async function GET() {
       return { farmerId: id, name: farmers.find((f) => f.id === id)?.name ?? id, url: `${info.base}/wa/${id}`, svg: await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }) };
     }),
   );
-  return Response.json({ running: true, base: info.base, ip: info.ip, links });
+  return Response.json({ running: true, base: info.base, ip: info.ip, fallback: info.fallback, links });
 }
