@@ -48,6 +48,25 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // After a rebuild, an open page may ask for script files that no longer exist: reload once to get the new ones.
+  useEffect(() => {
+    const stale = (msg: string) => /ChunkLoadError|Loading chunk [\w-]+ failed|Failed to fetch dynamically imported module/i.test(msg);
+    const heal = (msg: string) => {
+      if (!stale(msg)) return;
+      try {
+        const last = Number(sessionStorage.getItem('berekat.reloaded') ?? 0);
+        if (Date.now() - last < 30_000) return; // never loop
+        sessionStorage.setItem('berekat.reloaded', String(Date.now()));
+      } catch { /* storage blocked: still reload once */ }
+      window.location.reload();
+    };
+    const onError = (e: ErrorEvent) => heal(`${e.message} ${e.error?.name ?? ''}`);
+    const onRejection = (e: PromiseRejectionEvent) => heal(`${(e.reason as Error)?.name ?? ''} ${(e.reason as Error)?.message ?? e.reason}`);
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
+  }, []);
+
   useEffect(() => {
     void refresh();
     let es: EventSource | null = null;

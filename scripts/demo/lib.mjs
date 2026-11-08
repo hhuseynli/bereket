@@ -225,6 +225,17 @@ export async function ensureBuild({ force = false, quiet = false } = {}) {
     console.error(r.out.split('\n').slice(-40).join('\n'));
     throw new Error('npm run build failed');
   }
+  // A rebuild replaces .next under the presenter's running app, whose pages would then ask for files that no
+  // longer exist ("ChunkLoadError"). Restart it on the new build, keeping its modes and its state.
+  const srv = readPid('server');
+  if (srv && alive(srv.pid) && (await healthy(PORT))) {
+    const st = await state(PORT).catch(() => undefined);
+    const argv = ['--restart', '--resume', '--no-open', ...(st ? [`--ai=${st.settings.aiMode}`, `--whatsapp=${st.settings.channel}`] : [])];
+    if (!quiet) console.log(dim('  The app on :3000 was running the previous build: restarting it (state kept)…'));
+    const re = await run(process.execPath, [path.join(ROOT, 'scripts/demo/launch.mjs'), ...argv], { quiet: true });
+    if (re.code !== 0) console.error('  Could not restart the app: run npm run demo:launch -- --restart --resume');
+    else if (st && !st.settings.voiceReplies) await director(PORT, 'voice', 'off').catch(() => {});
+  }
   return { built: true };
 }
 
