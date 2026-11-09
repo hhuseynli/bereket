@@ -19,6 +19,13 @@ Real WhatsApp version only: `npm run demo:tunnel`, paste the printed URL into th
 demo:mode -- --whatsapp=twilio`, and have **Səbinə's phone send "Salam"** now (it opens her 24-hour window).
 Every phone must have sent `join <code>` to +1 415 523 8886 in the last 3 days.
 
+## Hosted version (Render)
+
+The app also runs at **https://bereket-ixtq.onrender.com** (Render, Frankfurt, always on; `render.yaml`). Every push to
+`main` redeploys it, which starts the demo state fresh. Presenter: open `https://bereket-ixtq.onrender.com/operator?key=<DEMO_ADMIN_TOKEN>`
+once per browser (a cookie keeps you in for 12 hours). Judges scan the QR on its **Phones** page. The laptop app and the
+hosted app are separate: run the demo on one of them. Keys live in the Render secret file `berekat.env`.
+
 ## Judges and visitors: one QR, their own account (EN or AZ)
 
 ```bash
