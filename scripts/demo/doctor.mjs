@@ -112,7 +112,8 @@ for (const need of ['f-elsen', 'f-rauf', 'f-sebine']) {
   const p = phones.find((x) => x.id === need);
   if (p?.valid) r.pass(`Farmer phone ${need}`, maskPhone(p.phone));
   else if (p) r.fail(`Farmer phone ${need}`, 'not a valid E.164 number (e.g. +994501234567)');
-  else r.warn(`Farmer phone ${need}`, 'not mapped in FARMER_PHONES (needed for the real-WhatsApp version of this act)');
+  else if (env.WHATSAPP_CHANNEL === 'twilio') r.warn(`Farmer phone ${need}`, 'not mapped in FARMER_PHONES (needed for real WhatsApp)');
+  else r.info(`Farmer phone ${need}`, 'not mapped (only for real WhatsApp via Twilio; the phone screen /wa needs none)');
 }
 const dupes = valid.filter((p, i) => valid.findIndex((q) => q.phone === p.phone) !== i);
 if (dupes.length) r.warn('FARMER_PHONES', `the same number is mapped twice (${dupes.map((d) => d.id).join(', ')}): only the first farmer receives messages`);

@@ -2,9 +2,13 @@
 // farm doodles (tomatoes, leaves, crates, a tractor), drawn in the spirit of WhatsApp's, not copied from it.
 export const sys = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
+// Injected as raw CSS: as a text child, React escapes the quotes in the wallpaper URL on the server but not in the
+// browser, and the mismatch makes React throw away the server HTML (hydration errors #418 / #425).
 export function WaTheme() {
-  return (
-    <style>{`
+  return <style dangerouslySetInnerHTML={{ __html: CSS }} />;
+}
+
+const CSS = `
       :root {
         --wa-bg: #efeae2; --wa-dot: rgba(0,0,0,0.045); --wa-head: #f6f6f6; --wa-head-text: #000; --wa-sub: #8696a0;
         --wa-pill: rgba(0,0,0,0.06); --wa-out: #d9fdd3; --wa-in: #ffffff; --wa-text: #111b21; --wa-meta: #667781;
@@ -30,6 +34,4 @@ export function WaTheme() {
       @keyframes wa-blink { 50% { opacity: 0.2; } }
       @keyframes wa-nudge { 0%,100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
       @keyframes wa-up { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-    `}</style>
-  );
-}
+`;
