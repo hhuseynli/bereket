@@ -1,0 +1,17 @@
+# Render Blueprint (also what `render services create` was given): one always-on Node web service in Frankfurt.
+# The app keeps live state in memory and streams updates, so it must be a single long-running instance.
+# Keys are not here: they go in a secret file named berekat.env (read by next.config.mjs), e.g.
+#   DEEPSEEK_API_KEY=… ELEVENLABS_API_KEY=… DEMO_ADMIN_TOKEN=… AI_MODE=live WHATSAPP_CHANNEL=simulator
+services:
+  - type: web
+    name: bereket
+    runtime: node
+    region: frankfurt
+    plan: starter
+    numInstances: 1
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
