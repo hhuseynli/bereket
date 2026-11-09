@@ -30,6 +30,11 @@ export async function POST(req: Request) {
   }
   if (photo && photo.size && mediaKind(photo.type || 'image/jpeg') !== 'image') return Response.json({ error: 'unsupported image type' }, { status: 415 });
 
+  // A recording without its container header (WebM, MP4/M4A, Ogg, MP3, WAV) cannot be transcribed: refuse it now.
+  if (audio && audio.size && !looksLikeAudio(Buffer.from(await audio.slice(0, 16).arrayBuffer()))) {
+    return Response.json({ error: 'broken recording', az: 'Səs yazısı xətalı alındı, zəhmət olmasa yenidən yazın.', en: 'The recording came through broken, please record it again.' }, { status: 422 });
+  }
+
   const run = async () => {
     if (demoVoice) return sendDemoVoice(demoVoice, demoPhotoId);
     const inb: Parameters<typeof handleInbound>[0] = { farmerId, text, via: 'simulator' };
@@ -40,10 +45,20 @@ export async function POST(req: Request) {
     }
     if (audio && audio.size) {
       const buf = Buffer.from(await audio.arrayBuffer());
+      if (!looksLikeAudio(buf)) throw new Error('broken recording');
       inb.audio = { buf, mime: audio.type || 'audio/webm', url: saveMedia(buf, audio.type || 'audio/webm') };
     }
     return handleInbound(inb);
   };
   run().catch((err) => console.error('phone inbound failed', err));
   return Response.json({ ok: true });
+}
+
+function looksLikeAudio(b: Buffer) {
+  const hex = b.subarray(0, 4).toString('hex');
+  return hex === '1a45dfa3' // WebM / Matroska (EBML)
+    || b.subarray(4, 8).toString('latin1') === 'ftyp' // MP4 / M4A
+    || b.subarray(0, 4).toString('latin1') === 'OggS'
+    || b.subarray(0, 4).toString('latin1') === 'RIFF' // WAV
+    || b.subarray(0, 3).toString('latin1') === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0); // MP3
 }

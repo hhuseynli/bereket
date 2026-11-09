@@ -20,7 +20,10 @@ async function post(fields: Record<string, string | Blob>) {
   const fd = new FormData();
   for (const [k, val] of Object.entries(fields)) fd.set(k, val);
   const res = await fetch('/api/phone', { method: 'POST', body: fd });
-  if (!res.ok) throw new Error(`${tr("Göndərilmədi", "Not sent")} (${res.status})`);
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { az?: string; en?: string };
+    throw new Error(j.az && j.en ? tr(j.az, j.en) : `${tr('Göndərilmədi', 'Not sent')} (${res.status})`);
+  }
 }
 
 // ---------- Recorder ----------
@@ -36,10 +39,10 @@ const tr = (az: string, en: string) => (LANG === 'en' ? en : az);
 function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, openSheet: () => void) {
   const [rec, setRec] = useState<Rec>(IDLE);
   const r = useRef<{
-    stream?: MediaStream; release?: ReturnType<typeof setTimeout>; mr?: MediaRecorder; chunks: Blob[]; send: boolean;
+    stream?: MediaStream; release?: ReturnType<typeof setTimeout>; mr?: MediaRecorder; job?: { send: boolean }; starting: boolean;
     start: { x: number; y: number }; held: boolean; t0: number; pausedMs: number; pausedAt?: number; tick?: ReturnType<typeof setInterval>;
     ctx?: AudioContext; analyser?: AnalyserNode; phase: Phase;
-  }>({ chunks: [], send: false, start: { x: 0, y: 0 }, held: false, t0: 0, pausedMs: 0, phase: 'idle' });
+  }>({ starting: false, start: { x: 0, y: 0 }, held: false, t0: 0, pausedMs: 0, phase: 'idle' });
 
   // Keep the microphone open for a minute after a recording, so the next one starts instantly (like WhatsApp).
   const scheduleRelease = () => {
@@ -53,7 +56,7 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
   const finish = (send: boolean) => {
     const s = r.current;
     if (s.phase === 'idle') return;
-    s.send = send;
+    if (s.job) s.job.send = send;
     s.phase = 'idle';
     stopTicking();
     if (s.mr && s.mr.state !== 'inactive') s.mr.stop();
@@ -63,8 +66,16 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
 
   const begin = async (x: number, y: number) => {
     const s = r.current;
+    // One recording at a time: a second press (or touch + pointer events firing together) must not start another.
+    if (s.starting || s.phase !== 'idle') return;
     s.start = { x, y };
     s.held = true;
+    s.starting = true;
+    try { await startRecording(); } finally { s.starting = false; }
+  };
+
+  const startRecording = async () => {
+    const s = r.current;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       toast(tr('Mikrofon üçün linki https ilə açın. İndilik + ilə hazır səs yazısı göndərin.', 'Open the link over https to use the microphone. For now, send a ready voice note with +.'));
       openSheet();
@@ -81,19 +92,24 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
     }
     clearTimeout(s.release);
     const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
+    // A recorder left over from an earlier press is shut down without sending anything.
+    if (s.mr && s.mr.state !== 'inactive') { s.mr.ondataavailable = null; s.mr.onstop = null; try { s.mr.stop(); } catch { /* already stopped */ } }
     const mr = new MediaRecorder(s.stream, mime ? { mimeType: mime } : undefined);
+    // Each recording keeps its own pieces and its own send decision, so recordings can never mix.
+    const chunks: Blob[] = [];
+    const job = { send: false };
+    const t0 = Date.now();
     s.mr = mr;
-    s.chunks = [];
-    s.send = false;
-    mr.ondataavailable = (e) => { if (e.data.size) s.chunks.push(e.data); };
+    s.job = job;
+    mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     mr.onstop = () => {
-      const ms = Date.now() - s.t0 - s.pausedMs;
-      if (!s.send) return;
+      const ms = Date.now() - t0 - s.pausedMs;
+      if (!job.send) return;
       if (ms < 800) { toast(tr('Səs yazmaq üçün basıb saxlayın, göndərmək üçün buraxın', 'Hold to record, release to send')); return; }
-      onSend(new Blob(s.chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] }));
+      onSend(new Blob(chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] }));
     };
     mr.start(200);
-    s.t0 = Date.now();
+    s.t0 = t0;
     s.pausedMs = 0;
     s.pausedAt = undefined;
     s.phase = 'hold';
