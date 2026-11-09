@@ -193,6 +193,44 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(undefined), 3500); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { if (rec.phase !== 'idle') setToast(undefined); }, [rec.phase]); // a hint must not cover the recorder
 
+  // Voice replies play by themselves when they arrive (in order). Replies already in the chat when it opened do not;
+  // nothing starts while the farmer records (the microphone would pick it up), waiting ones follow afterwards.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener('pointerdown', unlock, true);
+    document.addEventListener('keydown', unlock, true);
+    return () => { document.removeEventListener('pointerdown', unlock, true); document.removeEventListener('keydown', unlock, true); };
+  }, []);
+  const seenVoice = useRef<Set<string>>();
+  const [voiceQueue, setVoiceQueue] = useState<string[]>([]);
+  useEffect(() => {
+    if (!s) return;
+    const voiced = thread.filter((m) => m.dir === 'out' && m.voiceUrl);
+    if (!seenVoice.current) { seenVoice.current = new Set(voiced.map((m) => m.id)); return; }
+    const fresh = voiced.filter((m) => !seenVoice.current!.has(m.id));
+    if (!fresh.length) return;
+    fresh.forEach((m) => seenVoice.current!.add(m.id));
+    setVoiceQueue((q) => [...q, ...fresh.map((m) => m.voiceUrl!)]);
+  }, [s, thread]);
+  const nextVoice = voiceQueue[0];
+  const [voiceTick, setVoiceTick] = useState(0);
+  // Recording stops any playback, so the microphone only hears the farmer.
+  useEffect(() => { if (rec.phase !== 'idle' && player && !player.paused) player.pause(); }, [rec.phase]);
+  useEffect(() => {
+    if (!nextVoice || rec.phase !== 'idle') return;
+    const p = getPlayer();
+    if (!p.paused && p.dataset.url !== nextVoice) {
+      // the farmer is listening to something else: try again when that stops
+      const retry = () => setVoiceTick((t) => t + 1);
+      p.addEventListener('pause', retry, { once: true });
+      return () => p.removeEventListener('pause', retry);
+    }
+    const done = () => setVoiceQueue((q) => (q[0] === nextVoice ? q.slice(1) : q));
+    p.addEventListener('ended', done, { once: true });
+    playUrl(nextVoice).catch(() => done()); // blocked (no tap yet): skip, the play button still works
+    return () => p.removeEventListener('ended', done);
+  }, [nextVoice, rec.phase, voiceTick]);
+
   const farmer = s?.farmers.find((f) => f.id === farmerId);
   LANG = farmer?.lang === 'en' ? 'en' : 'az';
   if (!s) return <Frame><div style={{ margin: 'auto', color: v('meta') }}>{tr('Yüklənir…', 'Loading…')}</div></Frame>;
@@ -559,27 +597,75 @@ function usePeaks(url?: string) {
   return peaks ?? (url ? fallbackPeaks(url) : []);
 }
 
+// ---------- One shared player ----------
+// Every voice note plays through the same <audio> element (one at a time, like WhatsApp). iPhone Safari only lets
+// a page start audio by itself on an element that already played after a tap, so the first tap anywhere in the
+// chat plays a silent clip on it ("unlocks" it); new voice replies can then start on their own.
+let player: HTMLAudioElement | undefined;
+let unlocked = false;
+const getPlayer = () => (player ??= Object.assign(new Audio(), { preload: 'auto' }));
+
+function silentWav() {
+  const n = 800; // 0.1 s at 8 kHz, 8-bit mono
+  const b = new Uint8Array(44 + n);
+  const dv = new DataView(b.buffer);
+  const str = (o: number, x: string) => [...x].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  str(0, 'RIFF'); dv.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true); str(36, 'data'); dv.setUint32(40, n, true);
+  b.fill(128, 44);
+  return `data:audio/wav;base64,${btoa(String.fromCharCode(...b))}`;
+}
+
+function unlockAudio() {
+  if (unlocked) return;
+  const p = getPlayer();
+  if (p.src && !p.paused) { unlocked = true; return; }
+  p.src = silentWav();
+  p.play().then(() => { p.pause(); unlocked = true; }).catch(() => { /* not a usable tap yet */ });
+}
+
+function playUrl(url: string, rate = 1, at?: number) {
+  const p = getPlayer();
+  if (p.dataset.url !== url) { p.src = url; p.dataset.url = url; }
+  p.playbackRate = rate;
+  if (at !== undefined) p.currentTime = at;
+  return p.play();
+}
+
+/** Follow the shared player for one clip: playing, position. */
+function usePlayerState(url?: string) {
+  const [st, setSt] = useState({ playing: false, pos: 0, heard: false });
+  useEffect(() => {
+    if (!url) return;
+    const p = getPlayer();
+    const mine = () => p.dataset.url === url;
+    const on = () => { if (mine()) setSt({ playing: !p.paused, pos: p.currentTime, heard: true }); else setSt((x) => (x.playing ? { ...x, playing: false } : x)); };
+    const ended = () => { if (mine()) setSt((x) => ({ ...x, playing: false, pos: 0 })); };
+    const evs = ['play', 'pause', 'timeupdate', 'emptied'] as const;
+    evs.forEach((e) => p.addEventListener(e, on));
+    p.addEventListener('ended', ended);
+    return () => { evs.forEach((e) => p.removeEventListener(e, on)); p.removeEventListener('ended', ended); };
+  }, [url]);
+  return st;
+}
+
 function VoiceNote({ url, mine, meta }: { url?: string; mine?: boolean; meta: React.ReactNode }) {
-  const ref = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [pos, setPos] = useState(0);
+  const ref = useRef<HTMLAudioElement>(null); // only to learn the duration; playback is the shared player
+  const { playing, pos, heard } = usePlayerState(url);
   const [dur, setDur] = useState(0);
   const [rate, setRate] = useState(1);
-  const [heard, setHeard] = useState(false);
   const peaks = usePeaks(url);
   const frac = dur ? pos / dur : 0;
   const seek = (e: React.PointerEvent<HTMLDivElement>) => {
-    const a = ref.current;
-    if (!a || !dur) return;
+    if (!url || !dur) return;
     const r = e.currentTarget.getBoundingClientRect();
-    a.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur;
-    setPos(a.currentTime);
+    void playUrl(url, rate, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur).catch(() => {});
   };
   return (
     <div style={{ minWidth: 250 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button aria-label={playing ? tr('Dayandır', 'Pause') : tr('Oxut', 'Play')} disabled={!url}
-          onClick={() => { const a = ref.current; if (!a) return; if (playing) a.pause(); else { a.playbackRate = rate; void a.play(); } }}
+          onClick={() => { if (!url) return; if (playing) getPlayer().pause(); else void playUrl(url, rate).catch(() => {}); }}
           style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', flex: 'none', display: 'flex', color: v('icon') }}>
           {playing
             ? <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor" /></svg>
@@ -592,7 +678,7 @@ function VoiceNote({ url, mine, meta }: { url?: string; mine?: boolean; meta: Re
           <span style={{ position: 'absolute', left: `calc(${frac * 100}% - 6px)`, width: 12, height: 12, borderRadius: 6, background: mine ? 'var(--wa-green)' : 'var(--wa-read)', boxShadow: '0 0 2px rgba(0,0,0,0.3)' }} />
         </div>
         {playing || pos > 0 ? (
-          <button onClick={() => { const n = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1; setRate(n); if (ref.current) ref.current.playbackRate = n; }}
+          <button onClick={() => { const n = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1; setRate(n); if (url && getPlayer().dataset.url === url) getPlayer().playbackRate = n; }}
             style={{ flex: 'none', minWidth: 44, height: 26, borderRadius: 13, border: 0, background: 'rgba(127,127,127,0.25)', color: v('text'), fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             {rate}×
           </button>
@@ -608,17 +694,15 @@ function VoiceNote({ url, mine, meta }: { url?: string; mine?: boolean; meta: Re
         <span style={{ marginLeft: 'auto' }}>{meta}</span>
       </div>
       {url && (
-        <audio ref={ref} src={url} preload="auto"
+        <audio ref={ref} src={url} preload="metadata"
           onLoadedMetadata={(e) => {
             const a = e.currentTarget;
             if (Number.isFinite(a.duration)) return setDur(a.duration);
             // Browser recordings (webm) report an unknown length until read to the end: seek far to learn it.
-            const done = () => { a.removeEventListener('durationchange', done); if (Number.isFinite(a.duration)) { setDur(a.duration); a.currentTime = 0; setPos(0); } };
+            const done = () => { a.removeEventListener('durationchange', done); if (Number.isFinite(a.duration)) { setDur(a.duration); a.currentTime = 0; } };
             a.addEventListener('durationchange', done);
             a.currentTime = 1e9;
-          }}
-          onTimeUpdate={(e) => { if (Number.isFinite(e.currentTarget.duration)) setPos(e.currentTarget.currentTime); }}
-          onPlay={() => { setPlaying(true); setHeard(true); }} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setPos(0); }} />
+          }} />
       )}
     </div>
   );
