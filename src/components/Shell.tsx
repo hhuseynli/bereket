@@ -13,11 +13,13 @@ const NAV: Record<Persp, { href: string; label: [string, string]; key: string }[
   buyer: [
     { href: '/buyer', label: ['Tenders', 'Tenderlər'], key: 'tenders' },
     { href: '/buyer/orders', label: ['Orders', 'Sifarişlər'], key: 'orders' },
+    { href: '/impact?p=buyer', label: ['Impact', 'Təsir'], key: 'impact' },
   ],
   operator: [
     { href: '/operator', label: ['Logistics', 'Logistika'], key: 'logistics' },
     { href: '/operator/intake', label: ['Intake', 'Elan qəbulu'], key: 'intake' },
     { href: '/connect', label: ['Phones', 'Telefonlar'], key: 'connect' },
+    { href: '/impact', label: ['Impact', 'Təsir'], key: 'impact' },
   ],
 };
 
@@ -94,7 +96,7 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Band />
       <header style={{ minHeight: 64, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 32px', padding: '8px 40px', borderBottom: '1px solid var(--hair)', background: 'var(--paper)' }}>
-        <Link href="/buyer" style={{ display: 'flex', alignItems: 'center', gap: 10 }} aria-label={t('BƏRƏKƏT home', 'BƏRƏKƏT ana səhifə')}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10 }} aria-label={t('BƏRƏKƏT home', 'BƏRƏKƏT ana səhifə')}>
           <LogoMark />
           <Wordmark />
         </Link>

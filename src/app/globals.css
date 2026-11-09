@@ -111,3 +111,16 @@ h1, h2, h3 { margin: 0; }
 @media (max-width: 1500px), (max-height: 820px) {
   .page { padding: 22px 32px; gap: 16px; }
 }
+
+/* Landing page: two columns on a laptop or projector, one column on a phone */
+.landing { min-height: 100vh; display: flex; flex-direction: column; }
+.landing-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr); gap: 36px; align-items: center; max-width: 1280px; width: 100%; margin: 0 auto; padding: 28px 44px; box-sizing: border-box; }
+.landing-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.landing-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.landing-qr { display: flex; }
+@media (max-width: 900px) {
+  .landing-main { grid-template-columns: 1fr; padding: 20px 18px 28px; gap: 22px; }
+  .landing-steps { grid-template-columns: 1fr; }
+  .landing-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .landing-qr { display: none; }
+}
