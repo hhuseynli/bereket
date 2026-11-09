@@ -9,6 +9,9 @@ export const STAGES = [
   { n: 6, name: 'Red', az: 'qırmızı', color: '#B02A22' },
 ] as const;
 
+/** Produce whose ripeness on arrival is tracked (from the photo) and matched against the buyer's window. */
+export const tracksRipeness = (product: string) => product === 'Tomato';
+
 /** Stages advanced per day at ambient temperature (~20 °C) after picking. */
 export const RIPEN_PER_DAY = 1.0;
 

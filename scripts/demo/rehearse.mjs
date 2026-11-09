@@ -255,7 +255,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     await ensureBuild();
     port = 3100;
     cleanScratch();
-    server = await startServer({ port, env: { DEMO_DATA_DIR: scratchDataDir('rehearse'), DEMO_RESTORE: '0', AI_MODE: ai, WHATSAPP_CHANNEL: 'simulator', ...(a.fast ? { DEMO_STEP_MS: '0', DEMO_RECOVERY_MS: '300' } : {}) }, logFile: path.join(outDir, 'server.log') });
+    server = await startServer({ port, env: { DEMO_DATA_DIR: scratchDataDir('rehearse'), DEMO_RESTORE: '0', DEMO_DATA: '1', AI_MODE: ai, WHATSAPP_CHANNEL: 'simulator', ...(a.fast ? { DEMO_STEP_MS: '0', DEMO_RECOVERY_MS: '300' } : {}) }, logFile: path.join(outDir, 'server.log') });
   }
   const results = [];
   try {

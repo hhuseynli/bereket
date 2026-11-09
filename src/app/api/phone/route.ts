@@ -1,3 +1,4 @@
+import { roleOf } from '@/lib/access';
 import { saveMedia } from '@/lib/ai';
 import { DEMO_PHOTOS, DEMO_VOICE } from '@/lib/demo';
 import { demoPhoto, handleInbound, sendDemoVoice } from '@/lib/flows';
@@ -14,6 +15,9 @@ export async function POST(req: Request) {
   const form = await req.formData();
   const farmerId = String(form.get('farmerId'));
   if (!getState().farmers.some((f) => f.id === farmerId)) return Response.json({ error: 'unknown farmer' }, { status: 400 });
+  // A signed-up farmer may only write as themselves, and the presenter's scripted demo notes are not theirs.
+  const role = roleOf(req);
+  if (role.kind !== 'admin' && (role.kind !== 'farmer' || role.farmerId !== farmerId || form.get('demoVoice'))) return Response.json({ error: 'not allowed' }, { status: 403 });
   const text = form.get('text') ? String(form.get('text')).slice(0, 1000) : undefined;
   const demoVoice = form.get('demoVoice') ? String(form.get('demoVoice')) : undefined;
   const demoPhotoId = form.get('demoPhoto') ? String(form.get('demoPhoto')) : undefined;

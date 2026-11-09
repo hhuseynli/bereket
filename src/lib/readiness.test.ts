@@ -172,12 +172,31 @@ test('chat: draft without a photo, fix the price by message, Düzəliş keeps th
   await say('350 kilo');
   assert.equal(draft.qtyKg, 350);
 
+  // A tomato photo for an apple listing is not used: the farmer is told why and the listing is unchanged.
   await handleInbound({ farmerId: 'f-elsen', photo: demoPhoto('tomatoes-stage4'), via: 'simulator' });
-  assert.equal(draft.ripeness, 4);
-  assert.ok(draft.ripenessConfidence > 0);
+  assert.equal(draft.ripenessConfidence, 0);
+  assert.equal(draft.photoUrl, undefined);
+  assert.match([...s().messages].reverse().find((m) => m.farmerId === 'f-elsen' && m.dir === 'out')!.text ?? '', /pomidor görünür.*alma üçündür/);
 
   await say('1');
   assert.equal(draft.status, 'live');
+});
+
+test('photos: non-produce, screens, drawings, cooked food and old produce are never used as they are', async () => {
+  const { judgePhoto } = await import('./flows');
+  const v = (j: Record<string, unknown>, product = 'Tomato') => judgePhoto(validateInspection(j), product);
+  const ok = { problem: null, product: 'Tomato', ripeness: 4, confidence: 0.9, freshness: 'fresh', grade: 1, defects: [], spoiled: false };
+  assert.equal(v(ok).kind, 'use');
+  assert.equal((v(ok) as { minGrade?: number }).minGrade, undefined);
+  for (const problem of ['not_produce', 'not_a_real_photo', 'screen', 'cooked_or_processed', 'unclear']) assert.equal(v({ ...ok, problem }).kind, 'reject', problem);
+  assert.equal(v({ ...ok, product: 'N/A - not produce', problem: null }).kind, 'reject', 'no product named: not produce');
+  assert.equal(v({ ...ok, product: 'cucumbers' }).kind, 'reject', 'wrong product');
+  assert.equal(v({ ...ok, product: 'tomatoes' }).kind, 'use', 'plural names match');
+  assert.equal(v({ ...ok, freshness: 'old', defects: ['wrinkled skin'] }).kind, 'hold');
+  assert.equal(v({ ...ok, spoiled: true, defects: ['mould'] }).kind, 'hold');
+  assert.equal((v({ ...ok, freshness: 'aging', defects: ['dry calyx'] }) as { minGrade?: number }).minGrade, 2);
+  assert.equal((v({ ...ok, grade: 3, defects: ['cracks on many fruit'] }) as { minGrade?: number }).minGrade, 3);
+  assert.equal((v({ ...ok, grade: 2, defects: [] }) as { minGrade?: number }).minGrade, undefined, 'a grade without visible reasons does not downgrade');
 });
 
 test('chat: the model can never apply numbers the farmer did not say, or act outside the situation', async () => {
@@ -240,4 +259,137 @@ test('voice replies: numbers, money and cards are spoken as natural Azerbaijani'
   assert.ok(!/\d/.test(card), 'no digits left for the voice to misread');
   const offer = speechFor({ text: 'Ödəniş təhlükəsiz hesabda saxlanılır.', card: { title: 'Yeni sifariş', rows: [['Alıcı', 'Nərgiz Kitchen Group'], ['Miqdar', '80 kq × 1.22 ₼'], ['Məbləğ', '97.60 ₼'], ['Yığım', 'bu gün, 18:00']] } });
   assert.match(offer, /səksən kilo, kilosu bir manat iyirmi iki qəpik alır, cəmi doxsan yeddi manat altmış qəpik\. Yığım bu gün, saat on səkkiz\./);
+});
+
+test('demo data off: only listings from phones are matched, and a reset keeps the choice', async () => {
+  await director('reset');
+  const t = () => getState().tenders.find((x) => x.id === 'T-1042')!;
+  assert.ok(getState().listings.some((l) => l.source === 'seed'));
+  await director('demoData', 'off');
+  assert.equal(getState().listings.length, 0);
+  await director('elsenFallback'); // Elşən's 180 kg from the phone: not enough for 400 kg
+  const { findSupply } = await import('./flows');
+  await findSupply('T-1042');
+  assert.equal(t().proposalIds.length, 0);
+  await director('reset');
+  assert.equal(getState().settings.demoData, false);
+  assert.equal(getState().listings.length, 0);
+  await director('demoData', 'on');
+  await director('elsenFallback');
+  await findSupply('T-1042');
+  assert.deepEqual(getState().proposals.map((p) => p.costs.perKg.toFixed(2)), ['1.33', '1.23', '1.38']);
+  await director('reset');
+  assert.equal(getState().settings.demoData, true);
+});
+
+test('product workflow: post a tender for any product, match, accept, partial delivery, pickup, arrival, payout; cancel and refund', async () => {
+  const f = await import('./flows');
+  await director('reset');
+  await director('demoData', 'off');
+  const s = () => getState();
+  const lot = (id: string, farmerId: string, qtyKg: number, priceAzn: number): Listing => ({
+    id, farmerId, product: 'Cucumber', variety: 'Local', grade: 1, qtyKg, priceAzn, ripeness: 3, ripenessConfidence: 0.8,
+    defects: [], harvest: '2026-11-10', status: 'live', createdAt: new Date().toISOString(), source: 'whatsapp',
+  });
+  s().listings.push(lot('c-1', 'f-elsen', 150, 1.1), lot('c-2', 'f-gulnare', 140, 1.2));
+  const deadline = new Date(Date.parse(s().clock.base) + 30 * 3600_000).toISOString();
+  assert.throws(() => f.createTender({ product: 'Cucumber', qtyKg: 0, maxPriceAzn: 2, deadline }), /Quantity/);
+  assert.throws(() => f.createTender({ product: 'Cucumber', qtyKg: 10, maxPriceAzn: 2, deadline: s().clock.base }), /3 hours/);
+  const id = f.createTender({ product: 'cucumbers', qtyKg: 250, maxPriceAzn: 1.6, deadline });
+  const t = s().tenders.find((x) => x.id === id)!;
+  assert.equal(t.product, 'Cucumber');
+  assert.equal(t.variety, 'Any');
+
+  await f.findSupply(id);
+  assert.ok(t.proposalIds.length >= 1, 'cucumbers are matched without a ripeness window');
+  const orderId = f.confirmProposal(t.proposalIds[0]);
+  const o = s().orders.find((x) => x.id === orderId)!;
+  // 150 + 100 of Gülnarə's 140: the 40 kg she has left stays on sale as its own listing.
+  for (const a of o.allocations) assert.equal(s().listings.find((l) => l.id === a.listingId)!.status, 'reserved');
+  assert.ok(s().listings.some((l) => l.farmerId === 'f-gulnare' && l.product === 'Cucumber' && l.status === 'live' && l.qtyKg === 40));
+  const offer = [...s().messages].reverse().find((m) => m.farmerId === o.allocations[0].farmerId && m.card?.title === 'Yeni sifariş')!;
+  assert.ok(offer.card!.rows.some(([k, v]) => k === 'Məhsul' && /Xiyar/.test(v)));
+
+  // Elşən declines; nobody else has enough cucumbers: the buyer takes the rest.
+  const first = o.allocations.find((a) => a.farmerId === 'f-elsen')!;
+  const rest = o.allocations.filter((a) => a !== first);
+  await f.handleInbound({ farmerId: first.farmerId, text: '2', via: 'simulator' });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(o.recovery?.status, 'no_backup');
+  for (const a of rest) await f.handleInbound({ farmerId: a.farmerId, text: '1', via: 'simulator' });
+  f.acceptPartial(orderId);
+  assert.equal(o.partialKg, rest.reduce((n, a) => n + a.qtyKg, 0));
+  assert.equal(o.status, 'confirmed');
+
+  f.markPickedUp(orderId);
+  assert.equal(o.status, 'picked_up');
+  f.markDelivered(orderId);
+  assert.equal(o.status, 'delivered');
+  f.confirmReceipt(orderId);
+  assert.equal(o.status, 'settled');
+  assert.equal(o.escrow.status, 'released');
+
+  // A second tender, cancelled by the buyer after ordering: refunded, lots back on sale, tender open again.
+  s().listings.push(lot('c-4', 'f-sebine', 100, 1.15));
+  const id2 = f.createTender({ product: 'Cucumber', qtyKg: 100, maxPriceAzn: 2, deadline });
+  await f.findSupply(id2);
+  const t2 = s().tenders.find((x) => x.id === id2)!;
+  const o2id = f.confirmProposal(t2.proposalIds[0]);
+  const o2 = s().orders.find((x) => x.id === o2id)!;
+  f.cancelOrder(o2.id);
+  assert.equal(o2.status, 'cancelled');
+  assert.equal(o2.escrow.status, 'refunded');
+  assert.equal(t2.status, 'open');
+  for (const a of o2.allocations) assert.equal(s().listings.find((l) => l.id === a.listingId)!.status, 'live');
+  await director('demoData', 'on');
+  await director('reset');
+});
+
+test('matching splits lots so every farm sells at least 60%: 180 + 120 kg fill 250 kg as 178 + 72', () => {
+  const st = initialState();
+  const t = st.tenders.find((x) => x.id === 'T-1043')!;
+  st.listings = st.listings.filter((l) => l.product !== 'Cucumber');
+  const lot = (id: string, farmerId: string, qtyKg: number, priceAzn: number): Listing => ({
+    id, farmerId, product: 'Cucumber', variety: 'Local', grade: 1, qtyKg, priceAzn, ripeness: 0, ripenessConfidence: 0.8,
+    defects: [], harvest: '2026-11-10', status: 'live', createdAt: st.clock.base, source: 'seed',
+  });
+  st.listings.push(lot('a', 'f-gulay', 180, 1.25), lot('b', 'f-gulnare', 120, 1.3));
+  const r = generateProposals(st, t, st.clock.base);
+  assert.equal(r.proposals.length, 1);
+  assert.deepEqual(r.proposals[0].allocations.map((a) => [a.listingId, a.qtyKg]).sort(), [['a', 178], ['b', 72]]);
+});
+
+test('self sign-up: a judge creates a farmer, chats in English, and gets English cards and voice text', async () => {
+  const f = await import('./flows');
+  const { forFarmer } = await import('./farmer-lang');
+  const { speechFor } = await import('./tts');
+  await director('reset');
+  assert.throws(() => f.createFarmer({ name: 'A', place: 'Quba', lang: 'en' }), /name/);
+  assert.throws(() => f.createFarmer({ name: 'Judge One', place: 'Atlantis', lang: 'en' }), /district/);
+  const id = f.createFarmer({ name: 'Judge <b>One</b>', place: 'Lənkəran', lang: 'en' });
+  const me = getState().farmers.find((x) => x.id === id)!;
+  assert.equal(me.name, 'Judge bOne/b');
+  assert.ok(Math.abs(me.lat - 38.753) < 0.05 && me.selfSignup);
+  const welcome = getState().messages.find((m) => m.farmerId === id)!;
+  assert.match(welcome.text ?? '', /^Welcome!/);
+
+  // Cards are translated for English farmers; Azerbaijani farmers get them unchanged.
+  const card = { kind: 'card' as const, text: 'Ödəniş təhlükəsiz hesabda saxlanılır.', textEn: 'Payment is held safely. New order from X: 80 kg.', card: { title: 'Yeni sifariş', rows: [['Məhsul', 'Pomidor (Roma)'], ['Miqdar', '80 kq × 1.22 ₼'], ['Yığım', 'bu gün, 18:00']] as [string, string][], actions: [{ label: 'Qəbul', reply: '1' }, { label: 'İmtina', reply: '2' }] } };
+  const en = forFarmer(card, 'en');
+  assert.equal(en.card!.title, 'New order');
+  assert.deepEqual(en.card!.rows, [['Product', 'Tomato (Roma)'], ['Quantity', '80 kg × 1.22 ₼'], ['Pickup', 'today, 18:00']]);
+  assert.deepEqual(en.card!.actions!.map((a) => a.label), ['Accept', 'Decline']);
+  assert.equal(en.text, 'Payment is held safely.');
+  assert.equal(forFarmer(card, 'az'), card);
+  assert.match(speechFor(en, 'en'), /New order! .*wants 80 kilos at 1\.22 manat/);
+
+  // The assistant's rule path understands English too.
+  f.setFarmerLang(id, 'en');
+  await f.handleInbound({ farmerId: id, text: 'I have 300 kg of potatoes at 0.6 manat', via: 'simulator' });
+  const draft = getState().listings.find((l) => l.farmerId === id && l.status === 'draft');
+  assert.ok(draft, 'an English message makes a draft');
+  assert.equal(draft!.product, 'Potato');
+  const last = [...getState().messages].reverse().find((m) => m.farmerId === id && m.card)!;
+  assert.equal(last.card!.title, 'Your listing is ready');
+  await director('reset');
 });

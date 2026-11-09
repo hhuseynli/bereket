@@ -4,39 +4,42 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useLive, type LiveState } from './live';
 import { Phone } from './Phone';
-import { Band, bakuDay, bakuTime, LogoMark, Wordmark } from './ui';
+import { Band, bakuDayL, bakuTime, LogoMark, Wordmark } from './ui';
+import { useLang } from './lang';
 
 type Persp = 'buyer' | 'operator';
 
-const NAV: Record<Persp, { href: string; label: string; key: string }[]> = {
+const NAV: Record<Persp, { href: string; label: [string, string]; key: string }[]> = {
   buyer: [
-    { href: '/buyer', label: 'Tenders', key: 'tenders' },
-    { href: '/buyer/orders', label: 'Orders', key: 'orders' },
+    { href: '/buyer', label: ['Tenders', 'Tenderlər'], key: 'tenders' },
+    { href: '/buyer/orders', label: ['Orders', 'Sifarişlər'], key: 'orders' },
   ],
   operator: [
-    { href: '/operator', label: 'Live', key: 'live' },
-    { href: '/operator/intake', label: 'Intake', key: 'intake' },
-    { href: '/connect', label: 'Phones', key: 'connect' },
+    { href: '/operator', label: ['Logistics', 'Logistika'], key: 'logistics' },
+    { href: '/operator/intake', label: ['Intake', 'Elan qəbulu'], key: 'intake' },
+    { href: '/connect', label: ['Phones', 'Telefonlar'], key: 'connect' },
   ],
 };
 
-const KEYS: [string, string][] = [
-  ['P', 'Backup: show the farmer phone on the laptop (real phones: /connect)'],
-  ['B / O', 'Buyer / Operator view'],
-  ['A', 'Other farmers accept their offers'],
-  ['S', 'Səbinə says hello (opens her 24 h WhatsApp window)'],
-  ['C', 'Rauf cancels by voice note'],
-  ['T', 'Skip to delivery morning, 09:00 (pickup and arrival)'],
-  ['L', "Fallback: put Elşən's listing live without Act 1"],
-  ['F', 'AI mode: LIVE → CACHED → SIMULATED'],
-  ['W', 'Switch WhatsApp channel: simulator or Twilio'],
-  ['V', 'Voice replies on/off (Azerbaijani voice notes from the assistant)'],
-  ['R', 'Reset all demo data'],
-  ['?', 'This panel'],
+const KEYS: [string, string, string][] = [
+  ['P', 'Backup: show the farmer phone on the laptop (real phones: /connect)', 'Ehtiyat: fermerin telefonunu noutbukda göstər (real telefonlar: /connect)'],
+  ['B / O', 'Buyer / Operator view', 'Alıcı / Operator görünüşü'],
+  ['A', 'Other farmers accept their offers', 'Digər fermerlər təkliflərini qəbul edir'],
+  ['S', 'Səbinə says hello (opens her 24 h WhatsApp window)', 'Səbinə salam yazır (24 saatlıq WhatsApp pəncərəsini açır)'],
+  ['C', 'Rauf cancels by voice note', 'Rauf səsli mesajla ləğv edir'],
+  ['T', 'Skip to delivery morning, 09:00 (pickup and arrival)', 'Çatdırılma səhərinə keç, 09:00 (götürmə və çatma)'],
+  ['L', "Fallback: put Elşən's listing live without Act 1", 'Ehtiyat: Elşənin elanını 1-ci pərdə olmadan aktiv et'],
+  ['F', 'AI mode: LIVE → CACHED → SIMULATED', 'Sİ rejimi: CANLI → KEŞ → SİMULYASİYA'],
+  ['W', 'Switch WhatsApp channel: simulator or Twilio', 'WhatsApp kanalını dəyiş: simulyator və ya Twilio'],
+  ['V', 'Voice replies on/off (Azerbaijani voice notes from the assistant)', 'Səsli cavablar açıq/bağlı (köməkçidən azərbaycanca səsli mesajlar)'],
+  ['D', "Demo data on/off (off: only listings sent from the farmers' phones)", 'Demo məlumat açıq/bağlı (bağlı: yalnız fermerlərin telefonlarından göndərilən elanlar)'],
+  ['R', 'Reset all demo data', 'Bütün demo məlumatı sıfırla'],
+  ['?', 'This panel', 'Bu panel'],
 ];
 
 export function Shell({ perspective, active, children }: { perspective: Persp; active: string; children: React.ReactNode }) {
   const { s, act, connected } = useLive();
+  const { lang, setLang, t } = useLang();
   const router = useRouter();
   const path = usePathname();
   // The farmer's phone is a real phone now (/wa via /connect); the docked one is a backup behind P.
@@ -69,6 +72,7 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
       else if (k === 'f') d('aiMode');
       else if (k === 'w') d('channel');
       else if (k === 'v') d('voice');
+      else if (k === 'd') d('demoData');
       else if (k === 'r') { d('reset'); router.push('/buyer'); }
       else if (e.key === '?') setHelp((v) => !v);
       else if (k === 'escape') setHelp(false);
@@ -87,11 +91,11 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Band />
       <header style={{ minHeight: 64, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 32px', padding: '8px 40px', borderBottom: '1px solid var(--hair)', background: 'var(--paper)' }}>
-        <Link href="/buyer" style={{ display: 'flex', alignItems: 'center', gap: 10 }} aria-label="BƏRƏKƏT home">
+        <Link href="/buyer" style={{ display: 'flex', alignItems: 'center', gap: 10 }} aria-label={t('BƏRƏKƏT home', 'BƏRƏKƏT ana səhifə')}>
           <LogoMark />
           <Wordmark />
         </Link>
-        <div role="group" aria-label="Perspective" style={{ display: 'flex', padding: 3, borderRadius: 3, background: '#EDE4D3' }}>
+        <div role="group" aria-label={t('Perspective', 'Baxış')} style={{ display: 'flex', padding: 3, borderRadius: 3, background: '#EDE4D3' }}>
           {(['buyer', 'operator'] as Persp[]).map((p) => (
             <Link
               key={p}
@@ -105,11 +109,11 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
                 color: perspective === p ? (p === 'operator' ? 'var(--indigo)' : 'var(--soot)') : 'var(--muted)',
               }}
             >
-              {p === 'buyer' ? 'Buyer' : 'Operator'}
+              {p === 'buyer' ? t('Buyer', 'Alıcı') : 'Operator'}
             </Link>
           ))}
         </div>
-        <nav aria-label={`${perspective} navigation`} style={{ display: 'flex', gap: 28, fontSize: 15, alignSelf: 'stretch' }}>
+        <nav aria-label={t(`${perspective} navigation`, perspective === 'buyer' ? 'Alıcı naviqasiyası' : 'Operator naviqasiyası')} style={{ display: 'flex', gap: 28, fontSize: 15, alignSelf: 'stretch' }}>
           {NAV[perspective].map((n) => (
             <Link
               key={n.key}
@@ -120,22 +124,40 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
                 minHeight: 44,
               }}
             >
-              {n.label}
-              {n.key === 'live' && openRecovery && <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--madder)', borderRadius: 2, padding: '1px 6px' }}>1</span>}
+              {t(n.label[0], n.label[1])}
+              {n.key === 'logistics' && openRecovery && <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--madder)', borderRadius: 2, padding: '1px 6px' }}>1</span>}
               {n.key === 'intake' && review > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--saffron)', borderRadius: 2, padding: '1px 6px' }}>{review}</span>}
             </Link>
           ))}
         </nav>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16, fontSize: 13, color: 'var(--ink2)' }}>
+          <div role="group" aria-label="Language / Dil" style={{ display: 'flex', padding: 2, borderRadius: 3, boxShadow: 'inset 0 0 0 1px var(--hair)' }}>
+            {(['en', 'az'] as const).map((l) => (
+              <button key={l} className="chip" aria-pressed={lang === l} onClick={() => setLang(l)}
+                title={l === 'en' ? 'English' : 'Azərbaycanca'}
+                style={{ border: 0, cursor: 'pointer', background: lang === l ? 'var(--soot)' : 'transparent', color: lang === l ? 'var(--paper)' : 'var(--muted)', fontWeight: lang === l ? 600 : 400 }}>
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
           {s && <AiModeChip mode={s.settings.aiMode} />}
-          {s?.settings.voiceReplies && (
-            <button className="chip" aria-pressed={speak} onClick={() => setSpeak((v) => { const n = !v; try { localStorage.setItem('berekat.speak', n ? '1' : '0'); } catch { /* */ } return n; })}
-              title={speak ? 'Voice replies play on this laptop (click to mute)' : 'Voice replies are sent; click to also play them on this laptop'}
-              style={{ border: 0, cursor: 'pointer', background: speak ? 'var(--olive)' : 'transparent', color: speak ? 'var(--paper)' : undefined }}>
-              {speak ? '🔊 Voice replies' : '🔈 Voice replies'}
+          {s && (
+            <button className="chip" aria-pressed={s.settings.demoData !== false} onClick={() => void act('director', { op: 'demoData' })}
+              title={s.settings.demoData !== false
+                ? t("Seeded farms are listed. Click (or D) to match only listings from the farmers' phones", 'Nümunə təsərrüfatlar siyahıdadır. Yalnız fermerlərin telefonlarından gələn elanlara uyğunlaşdırmaq üçün klikləyin (və ya D)')
+                : t("Only listings from the farmers' phones. Click (or D) to add the seeded farms back", 'Yalnız fermerlərin telefonlarından gələn elanlar. Nümunə təsərrüfatları qaytarmaq üçün klikləyin (və ya D)')}
+              style={{ border: 0, cursor: 'pointer', boxShadow: `inset 0 0 0 1px var(${s.settings.demoData !== false ? '--saffron' : '--olive'})`, color: s.settings.demoData !== false ? 'var(--ink2)' : 'var(--olive-ink)', background: 'transparent' }}>
+              {s.settings.demoData !== false ? t('Demo data on', 'Demo məlumat açıq') : t('Real listings only', 'Yalnız real elanlar')}
             </button>
           )}
-          {s?.settings.channel === 'twilio' && <span className="chip" style={{ boxShadow: 'inset 0 0 0 1px var(--olive)', color: 'var(--olive-ink)' }}>WhatsApp live</span>}
+          {s?.settings.voiceReplies && (
+            <button className="chip" aria-pressed={speak} onClick={() => setSpeak((v) => { const n = !v; try { localStorage.setItem('berekat.speak', n ? '1' : '0'); } catch { /* */ } return n; })}
+              title={speak ? t('Voice replies play on this laptop (click to mute)', 'Səsli cavablar bu noutbukda səslənir (səssizləşdirmək üçün klikləyin)') : t('Voice replies are sent; click to also play them on this laptop', 'Səsli cavablar göndərilir; bu noutbukda da səsləndirmək üçün klikləyin')}
+              style={{ border: 0, cursor: 'pointer', background: speak ? 'var(--olive)' : 'transparent', color: speak ? 'var(--paper)' : undefined }}>
+              {speak ? '🔊 ' : '🔈 '}{t('Voice replies', 'Səsli cavablar')}
+            </button>
+          )}
+          {s?.settings.channel === 'twilio' && <span className="chip" style={{ boxShadow: 'inset 0 0 0 1px var(--olive)', color: 'var(--olive-ink)' }}>{t('WhatsApp live', 'WhatsApp canlı')}</span>}
           {perspective === 'buyer' ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span>Nərgiz Kitchen Group</span>
@@ -144,7 +166,7 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
           ) : (
             <span className="num" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: 4, background: connected ? 'var(--olive)' : 'var(--madder)' }} />
-              {nowIso ? `${bakuDay(nowIso)}, ${bakuTime(nowIso)}` : ''}
+              {nowIso ? `${bakuDayL(nowIso, lang)}, ${bakuTime(nowIso)}` : ''}
             </span>
           )}
         </div>
@@ -152,25 +174,25 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {dock && (
-          <aside aria-label="Farmer phone" className="phone-dock" style={{ flex: 'none', overflow: 'hidden', borderRight: '1px solid var(--hair)', background: '#EAE2D3', display: 'flex' }}>
+          <aside aria-label={t('Farmer phone', 'Fermerin telefonu')} className="phone-dock" style={{ flex: 'none', overflow: 'hidden', borderRight: '1px solid var(--hair)', background: '#EAE2D3', display: 'flex' }}>
             <Phone />
           </aside>
         )}
         <main className="scroll" style={{ flex: 1, minWidth: 0 }}>
-          {s ? children : <div className="muted" style={{ padding: 40 }}>Loading…</div>}
+          {s ? children : <div className="muted" style={{ padding: 40 }}>{t('Loading…', 'Yüklənir…')}</div>}
         </main>
       </div>
 
       {help && (
-        <div role="dialog" aria-label="Presenter controls" onClick={() => setHelp(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(31,27,22,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div role="dialog" aria-label={t('Presenter controls', 'Aparıcı idarəetməsi')} onClick={() => setHelp(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(31,27,22,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div className="card scroll" onClick={(e) => e.stopPropagation()} style={{ width: 860, maxWidth: '94vw', maxHeight: '92vh', padding: 28, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '12px 36px', alignContent: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <h2 className="serif" style={{ fontSize: 24 }}>Presenter controls</h2>
-            <div className="muted" style={{ fontSize: 13 }}>Keys work anywhere outside a text field.</div>
-            {KEYS.map(([k, d]) => (
+            <h2 className="serif" style={{ fontSize: 24 }}>{t('Presenter controls', 'Aparıcı idarəetməsi')}</h2>
+            <div className="muted" style={{ fontSize: 13 }}>{t('Keys work anywhere outside a text field.', 'Düymələr mətn sahəsindən kənar hər yerdə işləyir.')}</div>
+            {KEYS.map(([k, en, az]) => (
               <div key={k} style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 12, alignItems: 'center', fontSize: 14 }}>
                 <span><span className="kbd">{k}</span></span>
-                <span>{d}</span>
+                <span>{t(en, az)}</span>
               </div>
             ))}
             </div>
@@ -182,18 +204,20 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
   );
 }
 
-const MODE_STYLE: Record<string, { label: string; color: string; title: string }> = {
-  live: { label: 'AI · LIVE', color: 'var(--olive-ink)', title: 'Real provider inference' },
-  cached: { label: 'AI · CACHED', color: 'var(--indigo)', title: 'Previously verified provider results, no network' },
-  simulated: { label: 'AI · SIMULATED', color: 'var(--saffron)', title: 'Scripted fallback, no AI calls' },
+const MODE_STYLE: Record<string, { label: [string, string]; color: string; title: [string, string] }> = {
+  live: { label: ['AI · LIVE', 'Sİ · CANLI'], color: 'var(--olive-ink)', title: ['Real provider inference', 'Provayderin real cavabları'] },
+  cached: { label: ['AI · CACHED', 'Sİ · KEŞ'], color: 'var(--indigo)', title: ['Previously verified provider results, no network', 'Əvvəlcədən yoxlanmış provayder nəticələri, şəbəkəsiz'] },
+  simulated: { label: ['AI · SIMULATED', 'Sİ · SİMULYASİYA'], color: 'var(--saffron)', title: ['Scripted fallback, no AI calls', 'Ssenarili ehtiyat rejim, Sİ çağırışı yoxdur'] },
 };
 
 function AiModeChip({ mode }: { mode: string }) {
+  const { t } = useLang();
   const m = MODE_STYLE[mode] ?? MODE_STYLE.simulated;
-  return <span className="chip" data-ai-mode={mode} title={m.title} style={{ color: m.color, boxShadow: `inset 0 0 0 1px ${m.color}` }}>{m.label}</span>;
+  return <span className="chip" data-ai-mode={mode} title={t(...m.title)} style={{ color: m.color, boxShadow: `inset 0 0 0 1px ${m.color}` }}>{t(...m.label)}</span>;
 }
 
 function Readiness({ r }: { r: LiveState['presenter'] }) {
+  const { t } = useLang();
   const row = (k: string, v: React.ReactNode, ok?: boolean) => (
     <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 10, fontSize: 13.5, padding: '5px 0', borderBottom: '1px solid var(--hair2)' }}>
       <span className="muted">{k}</span>
@@ -202,21 +226,25 @@ function Readiness({ r }: { r: LiveState['presenter'] }) {
   );
   const fails = Object.entries(r.health).filter(([, h]) => !h.ok);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} aria-label="Readiness">
-      <h2 className="serif" style={{ fontSize: 24 }}>Readiness</h2>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} aria-label={t('Readiness', 'Hazırlıq')}>
+      <h2 className="serif" style={{ fontSize: 24 }}>{t('Readiness', 'Hazırlıq')}</h2>
       <div className="card" style={{ padding: '12px 14px', background: '#fff', display: 'flex', flexDirection: 'column', gap: 4 }} data-act={r.act.n}>
-        <span className="eyebrow" style={{ color: 'var(--indigo)', fontSize: 11 }}>{r.act.n <= 4 ? `Act ${r.act.n} · ${r.act.title}` : r.act.title}</span>
-        <span style={{ fontWeight: 600 }}>Next: {r.act.next}</span>
+        <span className="eyebrow" style={{ color: 'var(--indigo)', fontSize: 11 }}>{r.act.n <= 4 ? `${t(`Act ${r.act.n}`, `${r.act.n}-${[3, 4].includes(r.act.n) ? 'cü' : 'ci'} pərdə`)} · ${r.act.title}` : r.act.title}</span>
+        <span style={{ fontWeight: 600 }}>{t('Next', 'Növbəti')}: {r.act.next}</span>
       </div>
-      {row('AI mode', <AiModeChip mode={r.aiMode} />)}
-      {row('Text + photo AI', r.text ? `${r.text.provider} · ${r.text.model}${r.text.vision ? '' : ' (no vision)'}` : 'none: simulated only', !!r.text)}
-      {row('Speech-to-text', r.stt ? 'ElevenLabs · scribe_v2 (aze)' : 'none: scripted transcripts only', !!r.stt)}
-      {row('Voice replies', !r.tts.available ? 'unavailable (no ElevenLabs key)' : r.tts.on ? `on · ${r.tts.model}, native Azerbaijani voice${r.tts.last && !r.tts.last.ok ? ` · last error: ${r.tts.last.detail}` : ''}` : 'off (press V)', r.tts.last ? r.tts.last.ok : undefined)}
-      {row('WhatsApp', r.channel === 'twilio' ? 'Twilio sandbox (real phones)' : 'Simulator (docked phone)')}
-      {row('Twilio', r.twilio.configured ? `keys set · ${r.twilio.farmersMapped} farmer phone${r.twilio.farmersMapped === 1 ? '' : 's'} · webhook URL ${r.twilio.webhookUrlKnown ? 'known' : 'not set'}` : 'not configured', r.channel === 'twilio' ? r.twilio.configured && r.twilio.farmersMapped > 0 : undefined)}
-      {r.twilio.failedDeliveries > 0 && row('Deliveries', `${r.twilio.failedDeliveries} WhatsApp message(s) failed: see the Live ledger`, false)}
-      {fails.map(([k, h]) => row(`Last ${k} error`, h.detail, false))}
-      {r.restored && <div className="muted" style={{ fontSize: 12 }}>State restored after a server restart.</div>}
+      {row(t('AI mode', 'Sİ rejimi'), <AiModeChip mode={r.aiMode} />)}
+      {row(t('Text + photo AI', 'Mətn + foto Sİ'), r.text ? `${r.text.provider} · ${r.text.model}${r.text.vision ? '' : t(' (no vision)', ' (görmə yoxdur)')}` : t('none: simulated only', 'yoxdur: yalnız simulyasiya'), !!r.text)}
+      {row(t('Speech-to-text', 'Nitqdən mətnə'), r.stt ? 'ElevenLabs · scribe_v2 (aze)' : t('none: scripted transcripts only', 'yoxdur: yalnız ssenarili transkriptlər'), !!r.stt)}
+      {row(t('Voice replies', 'Səsli cavablar'), !r.tts.available ? t('unavailable (no ElevenLabs key)', 'əlçatan deyil (ElevenLabs açarı yoxdur)') : r.tts.on ? `${t('on', 'açıq')} · ${r.tts.model}, ${t('native Azerbaijani voice', 'doğma azərbaycanca səs')}${r.tts.last && !r.tts.last.ok ? ` · ${t('last error', 'son xəta')}: ${r.tts.last.detail}` : ''}` : t('off (press V)', 'bağlı (V düyməsi)'), r.tts.last ? r.tts.last.ok : undefined)}
+      {row(t('Demo data', 'Demo məlumat'), !r.demoData ? t("off: only listings from the farmers' phones", 'bağlı: yalnız fermerlərin telefonlarından gələn elanlar') : t('on: seeded farms are listed (press D)', 'açıq: nümunə təsərrüfatlar siyahıdadır (D düyməsi)'))}
+      {row('WhatsApp', r.channel === 'twilio' ? t('Twilio sandbox (real phones)', 'Twilio sandbox (real telefonlar)') : t('Simulator (docked phone)', 'Simulyator (ekrandakı telefon)'))}
+      {row('Twilio', r.twilio.configured
+        ? t(`keys set · ${r.twilio.farmersMapped} farmer phone${r.twilio.farmersMapped === 1 ? '' : 's'} · webhook URL ${r.twilio.webhookUrlKnown ? 'known' : 'not set'}`,
+            `açarlar var · ${r.twilio.farmersMapped} fermer telefonu · webhook URL ${r.twilio.webhookUrlKnown ? 'məlumdur' : 'təyin edilməyib'}`)
+        : t('not configured', 'qurulmayıb'), r.channel === 'twilio' ? r.twilio.configured && r.twilio.farmersMapped > 0 : undefined)}
+      {r.twilio.failedDeliveries > 0 && row(t('Deliveries', 'Çatdırılmalar'), t(`${r.twilio.failedDeliveries} WhatsApp message(s) failed: see the order's activity in Logistics`, `${r.twilio.failedDeliveries} WhatsApp mesajı çatmadı: Logistika bölməsində sifarişin fəaliyyətinə baxın`), false)}
+      {fails.map(([k, h]) => row(t(`Last ${k} error`, `Son ${k} xətası`), h.detail, false))}
+      {r.restored && <div className="muted" style={{ fontSize: 12 }}>{t('State restored after a server restart.', 'Server yenidən başladıqdan sonra vəziyyət bərpa edildi.')}</div>}
     </div>
   );
 }

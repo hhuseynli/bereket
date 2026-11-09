@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from './paths';
-import { initialState } from './seed';
+import { initialState, seedListings } from './seed';
+import { forFarmer } from './farmer-lang';
 import { speechFor, synthesize } from './tts';
 import { maskPhone, publicBaseUrl } from './twilio';
 import type { Farmer, LedgerEvent, Message, State } from './types';
@@ -71,6 +72,7 @@ export function resetState() {
   h.state.version = version; // clients only ever see the version go up
   // Real WhatsApp facts survive a reset: the 24-hour windows and the webhooks already handled.
   h.state.settings = settings;
+  h.state.listings = settings.demoData === false ? [] : seedListings(); // a reset keeps the demo-data choice
   h.state.lastInboundAt = lastInboundAt ?? {};
   h.state.seenSids = seenSids ?? [];
   applyPhones(h.state);
@@ -161,7 +163,7 @@ export function sendToFarmer(farmerId: string, msg: Omit<Message, 'id' | 'farmer
   const s = getState();
   const f = farmer(farmerId);
   const viaTwilio = s.settings.channel === 'twilio' && !!f.phone && !!process.env.TWILIO_ACCOUNT_SID;
-  const m: Message = { id: uid('m'), farmerId, dir: 'out', at: now(), via: viaTwilio ? 'twilio' : 'simulator', delivery: viaTwilio ? 'queued' : 'local', ...msg };
+  const m: Message = { id: uid('m'), farmerId, dir: 'out', at: now(), via: viaTwilio ? 'twilio' : 'simulator', delivery: viaTwilio ? 'queued' : 'local', ...forFarmer(msg, f.lang) };
   s.messages.push(m);
   if (viaTwilio) {
     // WhatsApp only allows free-form messages within 24 hours of the farmer's last message.
@@ -176,14 +178,23 @@ export function sendToFarmer(farmerId: string, msg: Omit<Message, 'id' | 'farmer
 
 // Voice notes for one farmer go out in the order their messages were written.
 const voiceChains = new Map<string, Promise<void>>();
+const voiceBudget = new Map<string, number>(); // characters of voice replies per self-signed-up farmer
 
 async function attachVoice(m: Message, phone?: string) {
-  const spoken = speechFor(m);
+  const f = farmer(m.farmerId);
+  const lang = f?.lang === 'en' ? 'en' : 'az';
+  const spoken = speechFor(m, lang);
   if (!spoken) return;
+  // Accounts made from the join QR get a voice budget (ElevenLabs credits), then text only.
+  if (f?.selfSignup) {
+    const used = voiceBudget.get(f.id) ?? 0;
+    if (used + spoken.length > Number(process.env.DEMO_SIGNUP_VOICE_CHARS ?? 1500)) return;
+    voiceBudget.set(f.id, used + spoken.length);
+  }
   m.voicePending = true;
   const prev = voiceChains.get(m.farmerId) ?? Promise.resolve();
   const next = prev.then(async () => {
-    const clip = await synthesize(spoken, getState().settings.aiMode);
+    const clip = await synthesize(spoken, getState().settings.aiMode, lang);
     m.voicePending = false;
     if (clip) {
       m.voiceUrl = clip.url;
@@ -204,7 +215,7 @@ async function attachVoice(m: Message, phone?: string) {
 function deliveryFailed(m: Message, why: string) {
   m.delivery = 'failed';
   m.deliveryError = why;
-  ledger({ type: 'system', tone: 'alert', title: `WhatsApp to ${farmer(m.farmerId).name.split(' ')[0]} not delivered`, detail: why });
+  ledger({ type: 'system', tone: 'alert', title: `WhatsApp to ${farmer(m.farmerId).name.split(' ')[0]} not delivered`, titleAz: `${farmer(m.farmerId).name.split(' ')[0]} fermerinə WhatsApp mesajı çatmadı`, detail: why });
 }
 
 /** The sandbox allows about one message every 3 seconds, so sends are serialised with a gap and retried once. */

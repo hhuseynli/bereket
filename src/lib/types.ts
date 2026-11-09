@@ -13,6 +13,8 @@ export interface Farmer {
   deals: number;
   color: ThreadColor;
   phone?: string; // E.164, e.g. +99450..., used for the Twilio channel
+  lang?: 'az' | 'en'; // language the farmer chats in (default Azerbaijani)
+  selfSignup?: string; // ISO time the farmer created their own account from the join QR
 }
 
 export interface Buyer {
@@ -61,18 +63,19 @@ export interface Tender {
   id: string;
   buyerId: string;
   product: string;
-  variety: string;
+  variety: string; // 'Any' matches every variety
   grade: 1 | 2 | 3;
   qtyKg: number;
   packaging: string;
   intendedUse: string;
   useWithinDays: number;
-  ripenessMin: number; // wanted stage on arrival
+  ripenessMin: number; // wanted stage on arrival (tomatoes; other produce: 1..6, not checked)
   ripenessMax: number;
   maxPriceAzn: number; // delivered, per kg
+  priceTolerancePct?: number; // how much a repair may raise the delivered price without asking (default 2)
   deadline: string; // ISO
   destination: string;
-  status: 'draft' | 'open' | 'matching' | 'proposals' | 'ordered';
+  status: 'draft' | 'open' | 'matching' | 'proposals' | 'ordered' | 'cancelled';
   proposalIds: string[];
   orderId?: string;
 }
@@ -107,6 +110,7 @@ export interface Costs {
 export interface Reason {
   ref?: string; // allocation id or 'option-ii' etc.
   text: string;
+  textAz?: string;
 }
 
 export interface Proposal {
@@ -115,14 +119,17 @@ export interface Proposal {
   key: 'best_fit' | 'lowest_price' | 'firmest';
   numeral: string; // i, ii, iii
   title: string;
+  titleAz?: string;
   recommended: boolean;
   allocations: Allocation[];
   route: Stop[];
   costs: Costs;
   arrivalSummary: string; // "Light red on arrival"
+  arrivalSummaryAz?: string;
   arrivalStage: number; // weighted average
   worstStage: number;
   warning?: string;
+  warningAz?: string;
   reasons: Reason[];
 }
 
@@ -136,6 +143,7 @@ export interface RecoveryCandidate {
   route?: Stop[];
   accepted: boolean; // engine verdict
   why: string;
+  whyAz?: string;
 }
 
 export interface Recovery {
@@ -149,7 +157,7 @@ export interface Recovery {
   after?: Costs;
 }
 
-export type OrderStatus = 'offers_sent' | 'confirmed' | 'picked_up' | 'delivered' | 'settled';
+export type OrderStatus = 'offers_sent' | 'confirmed' | 'picked_up' | 'delivered' | 'settled' | 'cancelled';
 
 export interface Order {
   id: string;
@@ -160,9 +168,11 @@ export interface Order {
   route: Stop[];
   costs: Costs;
   status: OrderStatus;
-  escrow: { amount: number; status: 'held' | 'released'; simulated: true };
+  escrow: { amount: number; status: 'held' | 'released' | 'refunded'; simulated: true };
   recovery?: Recovery;
+  partialKg?: number; // the buyer accepted a smaller delivery after a farmer dropped out
   priceNotice?: string; // shown to buyer after a recovery
+  priceNoticeAz?: string;
   buyerRatings: Record<string, number>; // farmerId -> stars
   farmerRatings: Record<string, number>; // farmerId -> stars given to buyer
   createdAt: string;
@@ -205,14 +215,20 @@ export interface LedgerEvent {
   title: string;
   detail?: string;
   quote?: string;
+  // Azerbaijani versions for the website in AZ (the English fields are the fallback)
+  titleAz?: string;
+  detailAz?: string;
+  quoteAz?: string;
   orderId?: string;
 }
 
 export interface AiStep {
   key: 'transcribe' | 'extract' | 'inspect' | 'price' | 'draft';
   label: string;
+  labelAz?: string;
   status: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
   output?: string;
+  outputAz?: string;
   ms?: number;
   mode?: 'live' | 'cached' | 'simulated'; // which kind of result this step used
   note?: string; // why a fallback was used
@@ -230,13 +246,16 @@ export interface AiRun {
   ripenessConfidence?: number;
   defects?: string[];
   priceNote?: string;
+  priceNoteAz?: string;
   listingId?: string;
   photoUrl?: string;
   audioUrl?: string;
   mode: 'live' | 'cached' | 'simulated' | 'mixed';
   status: 'running' | 'done' | 'needs_review' | 'failed';
   note?: string;
+  noteAz?: string;
   waitingFor?: string; // what the assistant is waiting for from the farmer, shown on Intake
+  waitingForAz?: string;
   edits?: { field: string; from?: string; to: string; by: 'farmer' | 'operator'; at: string; quote?: string }[];
 }
 
@@ -244,6 +263,7 @@ export interface Settings {
   channel: 'simulator' | 'twilio';
   aiMode: 'live' | 'cached' | 'simulated'; // live provider, cached verified results, or scripted fallback
   voiceReplies: boolean; // the assistant also answers with Azerbaijani voice notes
+  demoData?: boolean; // seeded marketplace (other farms' listings); off = only listings sent from real phones. Missing = on
 }
 
 export interface State {

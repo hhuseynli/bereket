@@ -25,7 +25,7 @@ export function currentAct(s: State): ActInfo {
   if (!rec || rec.status !== 'resolved') {
     let next = 'Press S (Səbinə says hello), then C (Rauf cancels)';
     if (rec?.status === 'searching') next = 'Re-matching…';
-    else if (rec?.status === 'proposed') next = 'Operator → Live: Approve and send offer';
+    else if (rec?.status === 'proposed') next = 'Operator → Logistics: Approve and send offer';
     else if (rec?.status === 'offered') next = "Tap Qəbul on Səbinə's phone (or she replies 1)";
     else if (rec?.status === 'no_backup') next = 'No backup: explain partial delivery and move on (T)';
     else if (s.lastInboundAt['f-sebine'] || s.messages.some((m) => m.farmerId === 'f-sebine' && m.dir === 'in')) next = 'Press C (Rauf cancels)';
@@ -51,6 +51,7 @@ export function readiness() {
     channel: s.settings.channel,
     text: p ? { provider: p.name, model: p.model, vision: p.vision } : null,
     stt: hasElevenLabs() ? { provider: 'elevenlabs', model: 'scribe_v2' } : null,
+    demoData: s.settings.demoData !== false,
     tts: { available: ttsAvailable(), on: s.settings.voiceReplies, model: TTS_MODEL(), last: ttsHealth() ?? null },
     twilio: { configured: twilioConfigured(), farmersMapped: phones.size, webhookUrlKnown: !!publicBaseUrl(), failedDeliveries },
     health: aiHealth(),

@@ -107,7 +107,7 @@ const rauf = maskPhone(phones['f-rauf']);
 await stepWait(9, 'Rauf cancels by voice → operator view offers the recovery',
   `From ${bold(rauf)} send a ${bold('voice note')}: ${green('"Salam, bağışlayın. Dünən gecə dolu pomidorları vurdu, göndərə bilmirəm."')}`,
   async (s) => { const rec = s.orders[0]?.recovery; const c = rec?.selected !== undefined ? rec.candidates[rec.selected] : undefined; return { ok: rec?.status === 'proposed' || rec?.status === 'offered' || rec?.status === 'resolved', detail: rec ? `${rec.status}: ${rec.shortfallKg} kg gap${c ? `, backup ${c.farmerId}` : ''}${rec.cause ? `, cause “${rec.cause}”` : ''}` : undefined }; });
-console.log(dim('\n  Optional: click "Approve and send offer" on Operator → Live; Səbinə replies 1 on her phone; the order is repaired at 1.35 ₼/kg.'));
+console.log(dim('\n  Optional: click "Approve and send offer" on Operator → Logistics; Səbinə replies 1 on her phone; the order is repaired at 1.35 ₼/kg.'));
 await stepWait(10, 'Səbinə accepts the backup offer (optional)', `Approve on the laptop, then from ${bold(sebine)} reply ${green('1')}`,
   async (s) => { const o = s.orders[0]; return { ok: o?.recovery?.status === 'resolved', detail: o ? `recovery ${o.recovery?.status}, ${o.costs.perKg} ₼/kg` : undefined }; }, { optional: true });
 

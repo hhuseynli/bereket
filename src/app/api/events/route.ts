@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export function GET(req: Request) {
+  // Fallback for proxies that hold back event streams (Cloudflare quick tunnels): the page polls the version.
+  if (new URL(req.url).searchParams.has('poll')) return Response.json({ version: getState().version }, { headers: { 'Cache-Control': 'no-store' } });
   const enc = new TextEncoder();
   let unsub = () => {};
   let ping: NodeJS.Timeout | undefined;
@@ -25,6 +27,6 @@ export function GET(req: Request) {
     },
   });
   return new Response(stream, {
-    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' },
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' },
   });
 }

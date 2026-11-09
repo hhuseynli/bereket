@@ -17,7 +17,7 @@ flowchart TB
     direction LR
     WA["Farmer's phone<br/>WhatsApp-style chat, /wa<br/>over Wi-Fi via npm run demo:phone"]
     BUY["Laptop: Buyer view<br/>tenders, proposals, orders"]
-    OPS["Laptop: Operator view<br/>Intake, Live map, ledger"]
+    OPS["Laptop: Operator view<br/>Intake, Logistics: orders, map, activity"]
   end
 
   subgraph Server["Laptop: one Next.js process on 127.0.0.1:3000"]
@@ -113,7 +113,7 @@ The farmer's phone is docked on the left (press **P** to hide it). Press **?** f
 2. **Three farms, one order.** Press **B**, open tender T-1042, **Find supply**. Show margin note 2
    (the cheapest lot arrives overripe). **Confirm option i**. Tap **Qəbul** on Elşən's phone, press **A**.
 3. **A farmer drops out.** Press **S** (Səbinə says hello, which opens her WhatsApp window), then **C**:
-   Rauf cancels by voice, the view jumps to Operator → Live, the weave shows the 80 kg gap.
+   Rauf cancels by voice, the view jumps to Operator → Logistics, the weave shows the 80 kg gap.
    **Approve and send offer**, then tap **Qəbul** on Səbinə's phone. The weave closes.
 4. **Delivered and trusted.** Press **T** (Thursday 09:00), open the order as Buyer, **Confirm receipt**,
    rate the farmers. Reply **5** from Elşən's phone to rate the buyer.

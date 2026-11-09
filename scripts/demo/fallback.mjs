@@ -17,7 +17,7 @@ cleanScratch();
 r.section('SIMULATED mode, all keys removed');
 const noKeys = { ANTHROPIC_API_KEY: '', DEEPSEEK_API_KEY: '', ELEVENLABS_API_KEY: '', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', AI_MODE: 'simulated', WHATSAPP_CHANNEL: 'simulator', DEMO_RESTORE: '0', DEMO_STEP_MS: '0', DEMO_RECOVERY_MS: '200' };
 const dir = scratchDataDir('fallback');
-let srv = await startServer({ port: 3102, env: { ...noKeys, DEMO_DATA_DIR: dir } });
+let srv = await startServer({ port: 3102, env: { ...noKeys, DEMO_DATA: '1', DEMO_DATA_DIR: dir } });
 try {
   for (const [n, ok, d] of await apiFourActs(3102)) r.add(ok ? 'PASS' : 'FAIL', n, d);
   r.section('L: Act 1 skipped with the listing fallback');
@@ -35,7 +35,7 @@ try {
   await action(3102, 'confirmProposal', { proposalId: before.proposals[0].id });
   await new Promise((res) => setTimeout(res, 800)); // snapshot is written within 500 ms
   await srv.stop();
-  srv = await startServer({ port: 3102, env: { ...noKeys, DEMO_DATA_DIR: dir, DEMO_RESTORE: '1' } });
+  srv = await startServer({ port: 3102, env: { ...noKeys, DEMO_DATA: '1', DEMO_DATA_DIR: dir, DEMO_RESTORE: '1' } });
   const after = await state(3102);
   after.orders[0]?.id === 'O-2207' && after.presenter.restored ? r.pass('Restart with --resume', `order ${after.orders[0].id} and Act ${after.presenter.act.n} restored`) : r.fail('Restart with --resume', 'state not restored');
 } finally {

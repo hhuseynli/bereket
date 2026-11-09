@@ -12,6 +12,8 @@ import { dataDir } from './paths';
 import type { Message } from './types';
 
 export const TTS_VOICE = () => process.env.TTS_VOICE_ID || 'BQgh92MxG7QAtCA8wY7O'; // "Ibrahim Mammadli", native Azerbaijani, conversational
+// English replies: the same voice by default (a local farmer's assistant speaking English); TTS_VOICE_ID_EN to change it.
+export const TTS_VOICE_EN = () => process.env.TTS_VOICE_ID_EN || TTS_VOICE();
 export const TTS_MODEL = () => process.env.TTS_MODEL || 'eleven_v4_turbo';
 export const ttsAvailable = () => !!process.env.ELEVENLABS_API_KEY && process.env.TTS_REPLIES !== '0';
 const TIMEOUT_S = () => Number(process.env.TTS_TIMEOUT_MS ?? 25_000) / 1000;
@@ -60,8 +62,35 @@ export function spokenAz(text: string): string {
     .trim();
 }
 
+/** English voice notes: units read out, the manat sign as a word. */
+export function spokenEn(text: string): string {
+  return text
+    .replace(/[*_~`#]/g, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/(\d+(?:[.,]\d+)?)\s*₼\s*\/\s*(kg|kq)/g, '$1 manat per kilo')
+    .replace(/(\d+(?:[.,]\d+)?)\s*₼/g, '$1 manat')
+    .replace(/(\d+)\s*(kg|kq)\b/g, '$1 kilos')
+    .replace(/\b(\d)\/6\b/g, 'stage $1')
+    .replace(/\s×\s/g, ' at ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** What the voice note says for a message: plain text as is, a card as one natural paragraph. */
-export function speechFor(m: Pick<Message, 'text' | 'card'>): string {
+export function speechFor(m: Pick<Message, 'text' | 'card'>, lang: 'az' | 'en' = 'az'): string {
+  if (lang === 'en') {
+    if (!m.card) return spokenEn(m.text ?? '');
+    const row = (k: string) => m.card!.rows.find(([key]) => key === k)?.[1];
+    if (m.card.title === 'Your listing is ready') {
+      const ripe = row('Ripeness');
+      return spokenEn([m.text, `Your listing is ready: ${row('Quantity')} of ${row('Product')?.replace(/\s*\(Local\)/, '')}, at ${row('Price')}.`,
+        ripe && !/photo/.test(ripe) ? `Ripeness: ${ripe}.` : '', 'If it is right, say "yes" or reply 1. You can also tell me what to change.'].filter(Boolean).join(' '));
+    }
+    if (m.card.title === 'New order') {
+      return spokenEn(`New order! ${row('Buyer')} wants ${row('Quantity')}, ${row('Total')} in total. Pickup ${row('Pickup')}. ${m.text ?? ''} To accept, say "accept" or reply 1; to decline, reply 2.`);
+    }
+    return spokenEn([m.card.title + '.', ...m.card.rows.map(([k, v]) => `${k}: ${v}.`), m.text ?? ''].join(' '));
+  }
   if (!m.card) return spokenAz(m.text ?? '');
   const row = (k: string) => m.card!.rows.find(([key]) => key === k)?.[1];
   let s: string;
@@ -88,9 +117,11 @@ const eleven = () => (client ??= new ElevenLabsClient());
 const DIR = () => dataDir('tts');
 
 /** Clip ids are keyed with a secret, so a URL cannot be guessed from the text (Twilio fetches them unauthenticated). */
-export function clipId(spoken: string): string {
+export function clipId(spoken: string, lang: 'az' | 'en' = 'az'): string {
   const secret = process.env.DEMO_ADMIN_TOKEN || process.env.ELEVENLABS_API_KEY || 'berekat';
-  return crypto.createHmac('sha256', secret).update(`${TTS_MODEL()}|${TTS_VOICE()}|${spoken}`).digest('hex').slice(0, 32);
+  // Azerbaijani clips keep their original ids (already cached); English ones add the language and voice.
+  const key = lang === 'en' ? `${TTS_MODEL()}|${TTS_VOICE_EN()}|en|${spoken}` : `${TTS_MODEL()}|${TTS_VOICE()}|${spoken}`;
+  return crypto.createHmac('sha256', secret).update(key).digest('hex').slice(0, 32);
 }
 
 export function readClip(id: string): { buf: Buffer; mime: string } | undefined {
@@ -108,16 +139,16 @@ export interface Clip { id: string; url: string; mode: Mode; seconds?: number }
 const gh = globalThis as unknown as { __ttsHealth?: { ok: boolean; at: string; detail: string } };
 export const ttsHealth = () => gh.__ttsHealth;
 
-export async function synthesize(spoken: string, aiMode: AiMode): Promise<Clip | undefined> {
+export async function synthesize(spoken: string, aiMode: AiMode, lang: 'az' | 'en' = 'az'): Promise<Clip | undefined> {
   if (!spoken || aiMode === 'simulated') return undefined;
-  const id = `${clipId(spoken)}.${FORMAT().ext}`;
+  const id = `${clipId(spoken, lang)}.${FORMAT().ext}`;
   const file = path.join(DIR(), id);
   if (fs.existsSync(file)) return { id, url: `/api/voice/${id}`, mode: 'cached' };
   if (aiMode !== 'live' || !ttsAvailable()) return undefined;
   try {
     const stream = await eleven().textToSpeech.convert(
-      TTS_VOICE(),
-      { text: spoken.slice(0, 1200), modelId: TTS_MODEL(), languageCode: 'az', outputFormat: FORMAT().api },
+      lang === 'en' ? TTS_VOICE_EN() : TTS_VOICE(),
+      { text: spoken.slice(0, 1200), modelId: TTS_MODEL(), languageCode: lang, outputFormat: FORMAT().api },
       { timeoutInSeconds: TIMEOUT_S(), maxRetries: 1 },
     );
     const buf = Buffer.from(await new Response(stream as ReadableStream).arrayBuffer());

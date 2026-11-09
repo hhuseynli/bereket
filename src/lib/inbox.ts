@@ -71,7 +71,7 @@ async function work() {
         job.attempts++;
         console.error(`[inbox] ${job.sid} failed (attempt ${job.attempts}):`, (err as Error).message);
         if (job.attempts >= 2) {
-          ledger({ type: 'system', tone: 'alert', title: `WhatsApp message from ${farmer(job.farmerId)?.name.split(' ')[0] ?? 'farmer'} could not be processed`, detail: (err as Error).message.slice(0, 140) });
+          ledger({ type: 'system', tone: 'alert', title: `WhatsApp message from ${farmer(job.farmerId)?.name.split(' ')[0] ?? 'farmer'} could not be processed`, titleAz: `${farmer(job.farmerId)?.name.split(' ')[0] ?? 'Fermer'} tərəfindən gələn WhatsApp mesajı emal edilə bilmədi`, detail: (err as Error).message.slice(0, 140) });
           emit();
           fs.rmSync(file, { force: true });
         } else fs.writeFileSync(file, JSON.stringify(job));
@@ -92,7 +92,7 @@ async function processJob(job: InboxJob) {
     const kind = mediaKind(mime);
     if (!url) continue;
     if (!kind) {
-      ledger({ type: 'system', tone: 'alert', title: `Unsupported file from ${farmer(job.farmerId).name.split(' ')[0]}`, detail: mime || 'unknown type' });
+      ledger({ type: 'system', tone: 'alert', title: `Unsupported file from ${farmer(job.farmerId).name.split(' ')[0]}`, titleAz: `${farmer(job.farmerId).name.split(' ')[0]} dəstəklənməyən fayl göndərdi`, detail: mime || 'unknown type', detailAz: mime || 'naməlum növ' });
       sendToFarmer(job.farmerId, { kind: 'text', text: 'Bu fayl növünü qəbul edə bilmirik. Səsli mesaj və ya şəkil göndərin.', textEn: "We can't accept this file type. Send a voice note or a photo." });
       emit();
       continue;
@@ -103,7 +103,7 @@ async function processJob(job: InboxJob) {
       if (kind === 'audio') inb.audio = { buf, mime, url: local };
       else inb.photo = { buf, mime, url: local };
     } catch (err) {
-      ledger({ type: 'system', tone: 'alert', title: `Could not download ${kind} from ${farmer(job.farmerId).name.split(' ')[0]}`, detail: (err as Error).message });
+      ledger({ type: 'system', tone: 'alert', title: `Could not download ${kind} from ${farmer(job.farmerId).name.split(' ')[0]}`, titleAz: `${farmer(job.farmerId).name.split(' ')[0]} fermerindən ${kind === 'audio' ? 'səsli mesaj' : 'şəkil'} yüklənə bilmədi`, detail: (err as Error).message });
       sendToFarmer(job.farmerId, { kind: 'text', text: 'Faylı ala bilmədik, zəhmət olmasa yenidən göndərin.', textEn: "We couldn't receive the file, please send it again." });
       emit();
     }

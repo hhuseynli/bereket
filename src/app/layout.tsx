@@ -10,6 +10,7 @@ import '@fontsource/source-serif-4/400-italic.css';
 import '@fontsource/source-serif-4/600.css';
 import '@fontsource/source-serif-4/600-italic.css';
 import './globals.css';
+import { LangProvider } from '@/components/lang';
 import { LiveProvider } from '@/components/live';
 
 export const metadata: Metadata = {
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="icon" href="/icon.svg" />
       </head>
       <body>
-        <LiveProvider>{children}</LiveProvider>
+        <LangProvider>
+          <LiveProvider>{children}</LiveProvider>
+        </LangProvider>
       </body>
     </html>
   );

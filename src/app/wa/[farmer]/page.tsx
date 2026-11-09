@@ -20,7 +20,7 @@ async function post(fields: Record<string, string | Blob>) {
   const fd = new FormData();
   for (const [k, val] of Object.entries(fields)) fd.set(k, val);
   const res = await fetch('/api/phone', { method: 'POST', body: fd });
-  if (!res.ok) throw new Error(`Göndərilmədi (${res.status})`);
+  if (!res.ok) throw new Error(`${tr("Göndərilmədi", "Not sent")} (${res.status})`);
 }
 
 // ---------- Recorder ----------
@@ -28,6 +28,10 @@ async function post(fields: Record<string, string | Blob>) {
 type Phase = 'idle' | 'hold' | 'locked';
 interface Rec { phase: Phase; elapsed: number; paused: boolean; dx: number; dy: number; levels: number[] }
 const IDLE: Rec = { phase: 'idle', elapsed: 0, paused: false, dx: 0, dy: 0, levels: [] };
+
+// The chat speaks the farmer's language; set on every render of the chat (one chat per tab).
+let LANG: 'az' | 'en' = 'az';
+const tr = (az: string, en: string) => (LANG === 'en' ? en : az);
 
 function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, openSheet: () => void) {
   const [rec, setRec] = useState<Rec>(IDLE);
@@ -62,7 +66,7 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
     s.start = { x, y };
     s.held = true;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      toast('Mikrofon üçün linki https ilə açın. İndilik + ilə hazır səs yazısı göndərin.');
+      toast(tr('Mikrofon üçün linki https ilə açın. İndilik + ilə hazır səs yazısı göndərin.', 'Open the link over https to use the microphone. For now, send a ready voice note with +.'));
       openSheet();
       return;
     }
@@ -70,10 +74,10 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
       try {
         s.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       } catch {
-        toast('Mikrofona icazə yoxdur. Ayarlardan icazə verin.');
+        toast(tr('Mikrofona icazə yoxdur. Ayarlardan icazə verin.', 'No microphone permission. Allow it in Settings.'));
         return;
       }
-      if (!s.held) { scheduleRelease(); toast('Mikrofon hazırdır. Basıb saxlayın və danışın.'); return; } // first-time permission prompt
+      if (!s.held) { scheduleRelease(); toast(tr('Mikrofon hazırdır. Basıb saxlayın və danışın.', 'Microphone ready. Press and hold, then talk.')); return; } // first-time permission prompt
     }
     clearTimeout(s.release);
     const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
@@ -85,7 +89,7 @@ function useRecorder(onSend: (b: Blob) => void, toast: (t: string) => void, open
     mr.onstop = () => {
       const ms = Date.now() - s.t0 - s.pausedMs;
       if (!s.send) return;
-      if (ms < 800) { toast('Səs yazmaq üçün basıb saxlayın, göndərmək üçün buraxın'); return; }
+      if (ms < 800) { toast(tr('Səs yazmaq üçün basıb saxlayın, göndərmək üçün buraxın', 'Hold to record, release to send')); return; }
       onSend(new Blob(s.chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] }));
     };
     mr.start(200);
@@ -173,9 +177,11 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(undefined), 3500); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { if (rec.phase !== 'idle') setToast(undefined); }, [rec.phase]); // a hint must not cover the recorder
 
-  if (!s) return <Frame><div style={{ margin: 'auto', color: v('meta') }}>Yüklənir…</div></Frame>;
-  const farmer = s.farmers.find((f) => f.id === farmerId);
-  if (!farmer) return <Frame><div style={{ margin: 'auto', padding: 24, textAlign: 'center' }}>Belə fermer yoxdur. <Link href="/wa" style={{ color: v('green') }}>Geri</Link></div></Frame>;
+  const farmer = s?.farmers.find((f) => f.id === farmerId);
+  LANG = farmer?.lang === 'en' ? 'en' : 'az';
+  if (!s) return <Frame><div style={{ margin: 'auto', color: v('meta') }}>{tr('Yüklənir…', 'Loading…')}</div></Frame>;
+  if (!farmer) return <Frame><div style={{ margin: 'auto', padding: 24, textAlign: 'center' }}>{tr('Belə fermer yoxdur.', 'No such farmer.')} <Link href="/wa" style={{ color: v('green') }}>{tr('Geri', 'Back')}</Link></div></Frame>;
+  const switchLang = () => void fetch('/api/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ farmerId, lang: LANG === 'en' ? 'az' : 'en' }) });
 
   // "yazır…" while the assistant works on the farmer's latest message; "səs yazır…" while a voice reply is made.
   const dirs = thread.map((m) => m.dir);
@@ -191,23 +197,27 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
     e.target.value = '';
     if (f) void send({ [kind]: f });
   };
-  const status = !connected ? 'bağlantı gözlənilir…' : recording && !busy ? 'səs yazır…' : busy ? 'yazır…' : 'onlayn';
+  const status = !connected ? tr('bağlantı gözlənilir…', 'connecting…') : recording && !busy ? tr('səs yazır…', 'recording audio…') : busy ? tr('yazır…', 'typing…') : tr('onlayn', 'online');
 
   return (
     <Frame>
       {/* Header */}
       <header className="wa-noselect" style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', paddingTop: 'max(8px, env(safe-area-inset-top))', background: v('head'), color: v('head-text'), borderBottom: '0.5px solid rgba(127,127,127,0.18)' }}>
-        <Link href="/wa" aria-label="Geri" style={{ height: 40, minWidth: 40, padding: '0 10px', borderRadius: 20, justifyContent: 'center', background: v('pill'), display: 'flex', alignItems: 'center', gap: 2, color: v('head-text') }}>
+        <Link href="/wa" aria-label={tr('Geri', 'Back')} style={{ height: 40, minWidth: 40, padding: '0 10px', borderRadius: 20, justifyContent: 'center', background: v('pill'), display: 'flex', alignItems: 'center', gap: 2, color: v('head-text') }}>
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4.5L7.5 12 15 19.5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </Link>
         <div style={{ width: 40, height: 40, borderRadius: 20, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><LogoMark size={24} /></div>
         <div style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: 17 }}>
             BƏRƏKƏT
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-label="Təsdiqlənmiş biznes"><path d="M12 1.8l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3-3.2-.1L12 22.2l-2.6-1.9-3.2.1-1-3-2.6-1.9 1-3.1-1-3.1 2.6-1.9 1-3 3.2.1z" fill="#21c063" /><path d="M8 12.2l2.7 2.7L16.2 9" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-label={tr('Təsdiqlənmiş biznes', 'Verified business')}><path d="M12 1.8l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3-3.2-.1L12 22.2l-2.6-1.9-3.2.1-1-3-2.6-1.9 1-3.1-1-3.1 2.6-1.9 1-3 3.2.1z" fill="#21c063" /><path d="M8 12.2l2.7 2.7L16.2 9" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
           <div style={{ fontSize: 13.5, color: busy || recording ? v('green') : v('sub'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status}</div>
         </div>
+        <button type="button" onClick={switchLang} aria-label={tr('Dili dəyiş: English', 'Change language: Azərbaycanca')}
+          style={{ height: 40, minWidth: 40, borderRadius: 20, border: 0, background: v('pill'), color: v('head-text'), fontSize: 13, fontWeight: 700, padding: '0 11px', flex: 'none', cursor: 'pointer' }}>
+          {LANG === 'en' ? 'EN' : 'AZ'}
+        </button>
         <span aria-hidden="true" style={{ height: 40, borderRadius: 20, background: v('pill'), display: 'flex', alignItems: 'center', gap: 16, padding: '0 14px', flex: 'none' }}>
           <svg width="24" height="24" viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="13" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.7" fill="none" /><path d="M15.5 10.5l5-3v9l-5-3" stroke="currentColor" strokeWidth="1.7" fill="none" strokeLinejoin="round" /></svg>
           <svg width="20" height="20" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.25 11.4 11.4 0 003.6.57 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1z" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinejoin="round" /></svg>
@@ -218,10 +228,10 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
       {/* Messages */}
       <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '8px 10px 14px', display: 'flex', flexDirection: 'column', gap: 2, background: v('bg'), backgroundImage: v('wall'), backgroundSize: '220px 220px' }}>
         <div style={{ alignSelf: 'center', background: v('banner'), color: v('banner-text'), fontSize: 12.5, lineHeight: 1.35, textAlign: 'center', borderRadius: 10, padding: '7px 12px', margin: '6px 16px 10px', maxWidth: 340 }}>
-          🔒 Demo: mesajları BƏRƏKƏT köməkçisi cavablandırır. Real pul köçürülmür.
+          🔒 {tr('Demo: mesajları BƏRƏKƏT köməkçisi cavablandırır. Real pul köçürülmür.', 'Demo: messages are answered by the BƏRƏKƏT assistant. No real money moves.')}
         </div>
-        <Chip>Bu gün</Chip>
-        {thread.length === 0 && <div style={{ alignSelf: 'center', color: v('meta'), fontSize: 14.5, textAlign: 'center', padding: '22px 30px' }}>Satmaq istədiyiniz məhsul barədə səsli mesaj göndərin: mikrofonu basıb saxlayın.</div>}
+        <Chip>{tr('Bu gün', 'Today')}</Chip>
+        {thread.length === 0 && <div style={{ alignSelf: 'center', color: v('meta'), fontSize: 14.5, textAlign: 'center', padding: '22px 30px' }}>{tr('Satmaq istədiyiniz məhsul barədə səsli mesaj göndərin: mikrofonu basıb saxlayın.', 'Send a voice note about the produce you want to sell: press and hold the microphone.')}</div>}
         {thread.map((m, i) => {
           const next = thread[i + 1];
           const prev = thread[i - 1];
@@ -231,25 +241,25 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
               read={read} live={m.id === lastCardId && !answered} onReply={(r) => void send({ text: r })} />
           );
         })}
-        {sending > 0 && <div style={{ alignSelf: 'flex-end', color: v('meta'), fontSize: 12.5, padding: '3px 6px' }}>göndərilir…</div>}
+        {sending > 0 && <div style={{ alignSelf: 'flex-end', color: v('meta'), fontSize: 12.5, padding: '3px 6px' }}>{tr('göndərilir…', 'sending…')}</div>}
       </div>
 
       {/* Composer */}
       <div className="wa-noselect" style={{ flex: 'none', position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '7px 10px', width: '100%', boxSizing: 'border-box', paddingBottom: 'max(10px, env(safe-area-inset-bottom))', background: v('bar'), borderTop: '0.5px solid rgba(127,127,127,0.18)' }}>
         {rec.phase === 'idle' && (
           <>
-            <button type="button" aria-label="Əlavə et" onClick={() => setSheet((x) => !x)} style={{ ...iconBtn, height: 36, width: 34 }}>
+            <button type="button" aria-label={tr('Əlavə et', 'Attach')} onClick={() => setSheet((x) => !x)} style={{ ...iconBtn, height: 36, width: 34 }}>
               <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke={v('icon')} strokeWidth="2" strokeLinecap="round" /></svg>
             </button>
             <form onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { setText(''); void send({ text: t }); } }}
               style={{ flex: '1 1 0', minWidth: 0, minHeight: 36, borderRadius: 18, background: v('input'), border: `1px solid ${v('input-line')}`, display: 'flex', alignItems: 'center', padding: '0 8px 0 14px' }}>
-              <label htmlFor="wa-msg" style={{ position: 'absolute', left: -9999 }}>Mesaj</label>
+              <label htmlFor="wa-msg" style={{ position: 'absolute', left: -9999 }}>{tr('Mesaj', 'Message')}</label>
               <input id="wa-msg" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" enterKeyHint="send" size={1}
                 style={{ flex: 1, minWidth: 0, width: '100%', border: 0, outline: 'none', fontSize: 17, fontFamily: sys, padding: '7px 0', background: 'transparent', color: v('text') }} />
               <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ flex: 'none', opacity: 0.85 }}><path d="M14.5 3.5h-6a5 5 0 00-5 5v7a5 5 0 005 5h4.5l7.5-7.5V8.5a5 5 0 00-5-5z" stroke={v('icon')} strokeWidth="1.7" fill="none" strokeLinejoin="round" /><path d="M13 20.5v-2.5a5 5 0 015-5h2.5" stroke={v('icon')} strokeWidth="1.7" fill="none" strokeLinejoin="round" /></svg>
             </form>
             {!text.trim() && (
-              <button type="button" aria-label="Kamera" onClick={() => cameraRef.current?.click()} style={{ ...iconBtn, height: 36, width: 36 }}>
+              <button type="button" aria-label={tr('Kamera', 'Camera')} onClick={() => cameraRef.current?.click()} style={{ ...iconBtn, height: 36, width: 36 }}>
                 <svg width="27" height="27" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3l1.6-2.2h6.8L17 7.5h3a1.5 1.5 0 011.5 1.5v9A1.5 1.5 0 0120 19.5H4A1.5 1.5 0 012.5 18V9A1.5 1.5 0 014 7.5z" stroke={v('icon')} strokeWidth="1.6" fill="none" strokeLinejoin="round" /><circle cx="12" cy="13" r="3.6" stroke={v('icon')} strokeWidth="1.6" fill="none" /></svg>
               </button>
             )}
@@ -261,7 +271,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style={{ animation: 'wa-blink 1s ease-in-out infinite' }}><rect x="8.5" y="2.5" width="7" height="12" rx="3.5" fill={v('red')} /><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21" stroke={v('red')} strokeWidth="2" fill="none" strokeLinecap="round" /></svg>
             <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 42 }}>{mmss(rec.elapsed)}</span>
             <span style={{ marginLeft: 'auto', marginRight: 6, color: v('meta'), fontSize: 15.5, transform: `translateX(${rec.dx * 0.55}px)`, opacity: Math.max(0.15, 1 + rec.dx / CANCEL_PX), display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-              <span style={{ animation: 'wa-nudge 1.2s ease-in-out infinite' }}>‹</span> Ləğv üçün sürüşdürün
+              <span style={{ animation: 'wa-nudge 1.2s ease-in-out infinite' }}>‹</span> {tr('Ləğv üçün sürüşdürün', 'Slide to cancel')}
             </span>
           </div>
         )}
@@ -273,7 +283,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
               <LiveWave levels={rec.levels} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <button aria-label="Səs yazısını sil" onClick={recorder.cancel} style={{ ...iconBtn, height: 40 }}>
+              <button aria-label={tr('Səs yazısını sil', 'Delete recording')} onClick={recorder.cancel} style={{ ...iconBtn, height: 40 }}>
                 <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l.9 13a1.5 1.5 0 001.5 1.4h6.2a1.5 1.5 0 001.5-1.4l.9-13M10 10v7M14 10v7" stroke={v('icon')} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
               <button aria-label={rec.paused ? 'Davam et' : 'Pauza'} onClick={recorder.togglePause} style={{ ...iconBtn, height: 40, width: 40, borderRadius: 20, border: `2px solid ${v('red')}` }}>
@@ -281,7 +291,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
                   ? <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5" fill={v('red')} /><path d="M5.5 11a6.5 6.5 0 0013 0" stroke={v('red')} strokeWidth="2" fill="none" /></svg>
                   : <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5" fill={v('red')} /><rect x="14" y="4" width="5" height="16" rx="1.5" fill={v('red')} /></svg>}
               </button>
-              <button aria-label="Səs yazısını göndər" onClick={recorder.send} style={roundBtn}>
+              <button aria-label={tr('Səs yazısını göndər', 'Send recording')} onClick={recorder.send} style={roundBtn}>
                 <SendIcon />
               </button>
             </div>
@@ -289,7 +299,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
         )}
 
         {rec.phase !== 'locked' && (text.trim() ? (
-          <button aria-label="Göndər" onClick={() => { const t = text.trim(); setText(''); void send({ text: t }); }} style={roundBtn}><SendIcon /></button>
+          <button aria-label={tr('Göndər', 'Send')} onClick={() => { const t = text.trim(); setText(''); void send({ text: t }); }} style={roundBtn}><SendIcon /></button>
         ) : (
           <div style={{ position: 'relative', flex: 'none' }}>
             {rec.phase === 'hold' && (
@@ -299,7 +309,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
                 <svg width="14" height="10" viewBox="0 0 14 10" style={{ animation: 'wa-up 1.2s ease-in-out infinite' }}><path d="M2 8l5-5 5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>
               </div>
             )}
-            <button aria-label="Səs yazısı: basıb saxlayın" className="wa-noselect"
+            <button aria-label={tr('Səs yazısı: basıb saxlayın', 'Voice note: press and hold')} className="wa-noselect"
               style={{ ...roundBtn, touchAction: 'none', transform: rec.phase === 'hold' ? `translate(${rec.dx * 0.15}px, ${rec.dy * 0.4}px) scale(1.9)` : undefined, transition: rec.phase === 'hold' ? 'transform .05s' : 'transform .15s', zIndex: 3, position: 'relative', boxShadow: '0 0 0 10px transparent' }}
               onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as Element).setPointerCapture(e.pointerId); void recorder.begin(e.clientX, e.clientY); }}
               onPointerMove={(e) => recorder.move(e.clientX, e.clientY)}
@@ -318,15 +328,15 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
         {sheet && (
           <>
             <div onClick={() => setSheet(false)} style={{ position: 'fixed', inset: 0, zIndex: 10, background: 'rgba(0,0,0,0.25)' }} />
-            <div role="dialog" aria-label="Əlavə et" style={{ position: 'absolute', left: 8, right: 8, bottom: 64, zIndex: 11, background: v('sheet'), color: v('text'), borderRadius: 18, padding: '18px 12px 10px', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+            <div role="dialog" aria-label={tr('Əlavə et', 'Attach')} style={{ position: 'absolute', left: 8, right: 8, bottom: 64, zIndex: 11, background: v('sheet'), color: v('text'), borderRadius: 18, padding: '18px 12px 10px', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 10 }}>
-                <SheetIcon color="#007aff" label="Kamera" onClick={() => { setSheet(false); cameraRef.current?.click(); }} icon="📷" />
-                <SheetIcon color="#5856d6" label="Foto" onClick={() => { setSheet(false); galleryRef.current?.click(); }} icon="🖼️" />
+                <SheetIcon color="#007aff" label={tr('Kamera', 'Camera')} onClick={() => { setSheet(false); cameraRef.current?.click(); }} icon="📷" />
+                <SheetIcon color="#5856d6" label={tr('Foto', 'Photo')} onClick={() => { setSheet(false); galleryRef.current?.click(); }} icon="🖼️" />
                 <SheetIcon color="#ff9500" label="Audio" onClick={() => { setSheet(false); audioFileRef.current?.click(); }} icon="🎧" />
               </div>
               {(demoVoices.length > 0 || farmerId === 'f-elsen') && (
                 <div style={{ borderTop: '0.5px solid rgba(127,127,127,0.3)', paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: 12, color: v('meta'), padding: '2px 8px 4px', letterSpacing: 0.3 }}>HAZIR SƏS YAZILARI (DEMO)</div>
+                  <div style={{ fontSize: 12, color: v('meta'), padding: '2px 8px 4px', letterSpacing: 0.3 }}>{tr('HAZIR SƏS YAZILARI (DEMO)', 'READY VOICE NOTES (DEMO)')}</div>
                   {demoVoices.map(([id, d]) => (
                     <SheetRow key={id} onClick={() => { setSheet(false); void send({ demoVoice: id, ...(id === 'elsen-listing' ? { demoPhoto: 'tomatoes-stage4' } : {}) }); }}>
                       🎤 {id === 'elsen-listing' ? 'Səsli mesaj + şəkil: pomidor satışı' : d.label.split(': ')[1]}
@@ -415,7 +425,7 @@ function LiveWave({ levels }: { levels: number[] }) {
 
 function Ticks({ read }: { read: boolean }) {
   return (
-    <svg width="17" height="11" viewBox="0 0 17 11" aria-label={read ? 'oxundu' : 'çatdırıldı'} style={{ marginLeft: 3, flex: 'none' }}>
+    <svg width="17" height="11" viewBox="0 0 17 11" aria-label={read ? tr('oxundu', 'read') : tr('çatdırıldı', 'delivered')} style={{ marginLeft: 3, flex: 'none' }}>
       <path d="M1 6l3 3 6-7.5M6.5 9l1 .9 6-7.5" stroke={read ? 'var(--wa-read)' : 'var(--wa-tick)'} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -455,7 +465,7 @@ function Bubble({ m, first, last, read, live, onReply }: { m: Message; first: bo
         {m.kind === 'photo' && m.mediaUrl && (
           <div style={{ position: 'relative' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={m.mediaUrl} alt="Şəkil" style={{ display: 'block', width: 250, maxWidth: '100%', borderRadius: 14 }} />
+            <img src={m.mediaUrl} alt={tr('Şəkil', 'Photo')} style={{ display: 'block', width: 250, maxWidth: '100%', borderRadius: 14 }} />
             <span style={{ position: 'absolute', right: 8, bottom: 6, fontSize: 11.5, color: '#fff', textShadow: '0 0 4px rgba(0,0,0,.7)', display: 'inline-flex', alignItems: 'center' }}>{hhmm(m.at)}<Ticks read={read} /></span>
           </div>
         )}
@@ -469,7 +479,7 @@ function Bubble({ m, first, last, read, live, onReply }: { m: Message; first: bo
           </div>
         )}
         {m.kind === 'text' && <span style={{ whiteSpace: 'pre-wrap' }}>{m.text}<Meta m={m} read={read} mine={mine} /></span>}
-        {m.delivery === 'failed' && <div style={{ color: v('red'), fontSize: 12.5, marginTop: 4 }}>Göndərilmədi</div>}
+        {m.delivery === 'failed' && <div style={{ color: v('red'), fontSize: 12.5, marginTop: 4 }}>{tr('Göndərilmədi', 'Not delivered')}</div>}
       </div>
       {m.kind === 'card' && m.card?.actions && (
         <div style={{ alignSelf: 'flex-start', width: 'min(80%, 330px)', marginLeft: 6, display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
@@ -552,7 +562,7 @@ function VoiceNote({ url, mine, meta }: { url?: string; mine?: boolean; meta: Re
   return (
     <div style={{ minWidth: 250 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button aria-label={playing ? 'Dayandır' : 'Oxut'} disabled={!url}
+        <button aria-label={playing ? tr('Dayandır', 'Pause') : tr('Oxut', 'Play')} disabled={!url}
           onClick={() => { const a = ref.current; if (!a) return; if (playing) a.pause(); else { a.playbackRate = rate; void a.play(); } }}
           style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', flex: 'none', display: 'flex', color: v('icon') }}>
           {playing

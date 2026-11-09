@@ -28,6 +28,7 @@ export interface TurnContext {
   history: string[]; // "Farmer: …" / "BƏRƏKƏT: …", oldest first
   allowed: ActionType[];
   fromVoice: boolean;
+  lang?: 'az' | 'en'; // the farmer's chat language (default Azerbaijani)
 }
 
 export interface Turn {
@@ -48,6 +49,8 @@ const SYSTEM = `You are the WhatsApp assistant of BƏRƏKƏT, a marketplace wher
 restaurants and shops. You speak simple, warm, polite Azerbaijani (Latin script, "siz" form, 1-3 short sentences). Use Azerbaijani spelling,
 never Turkish ("istəsəniz", not "isterseniz"; "bəli", not "evet"). Your replies are also read aloud as voice notes.
 Farmers send typed messages or voice notes (speech-to-text transcripts with recognition errors, greetings, small talk).
+Some farmers chat in English ("farmer_language": "en"): they write or speak English and read "reply_en", so make
+reply_en natural, warm, simple English (1-3 short sentences). Always fill BOTH reply_az and reply_en with the same meaning.
 
 Each turn you get the situation as JSON, the recent conversation and the farmer's new message. Choose ONE action from
 "allowed_actions":
@@ -77,7 +80,7 @@ Rules:
 Return ONLY JSON:
 {"action": "...", "fields": {"product": "Tomato", "variety": "...", "grade": 1, "qtyKg": 0, "priceAzn": 0.0, "harvestDate": "YYYY-MM-DD", "notes": "English"},
  "evidence": {"field": "farmer's exact words"}, "stars": 5, "cause": "English",
- "reply_az": "...", "reply_en": "faithful English translation of reply_az", "message_en": "English translation of the farmer's message"}
+ "reply_az": "...", "reply_en": "the same reply in English", "message_en": "English translation of the farmer's message"}
 Omit keys that do not apply.`;
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim().toLowerCase() !== 'null' ? v.trim() : undefined);
@@ -136,6 +139,13 @@ export function validateTurn(j: Record<string, unknown>, text: string, ctx: Turn
       out.replyEn = undefined; // the English gloss no longer matches
     }
   }
+  // The same for an English-speaking farmer, who reads reply_en.
+  if (out.action === 'reply' && ctx.lang === 'en' && out.replyEn) {
+    const claims = /\b(i('ve| have)? (updated|confirmed|changed|fixed|saved|cancelled|canceled|added|recorded|activated|published)|is now (live|active|published))\b/i;
+    const keep = out.replyEn.split(/(?<=[.!?])\s+/).filter((x) => !claims.test(x));
+    if (keep.length !== out.replyEn.split(/(?<=[.!?])\s+/).length) out.replyEn = keep.join(' ') || undefined;
+    if (!out.replyEn) out.replyAz = undefined;
+  }
   // A reply action must say something.
   if (out.action === 'reply' && !out.replyAz) {
     out.replyAz = 'Bağışlayın, tam başa düşmədim. Bir az ətraflı yaza bilərsiniz?';
@@ -152,7 +162,8 @@ export function offlineTurn(text: string, ctx: TurnContext): Omit<Turn, 'mode'> 
   const intent = offlineIntent(text);
   if (ctx.situation === 'offer') {
     if (intent.intent === 'accept') return { action: 'accept_offer' };
-    if (intent.intent === 'cancel' || /^(yox|xeyr)\b|olmaz|istəmirəm/.test(t)) return { action: 'decline_offer', cause: /dolu/.test(t) ? 'Hail damaged the crop' : undefined };
+    if (/^(yes|accept|ok|okay)\b/.test(t)) return { action: 'accept_offer' };
+    if (intent.intent === 'cancel' || /^(yox|xeyr|no|decline)\b|olmaz|istəmirəm/.test(t)) return { action: 'decline_offer', cause: /dolu|hail/.test(t) ? 'Hail damaged the crop' : undefined };
     return r('Qəbul üçün 1, imtina üçün 2 yazın.', 'Reply 1 to accept, 2 to decline.');
   }
   if (ctx.situation === 'order') {
@@ -161,8 +172,8 @@ export function offlineTurn(text: string, ctx: TurnContext): Omit<Turn, 'mode'> 
   }
   if (allow('rate') && /^[1-5]$/.test(t)) return { action: 'rate', stars: Number(t) };
   if (ctx.situation === 'draft' || ctx.situation === 'intake') {
-    if (allow('confirm_listing') && /^(bəli|hə|düzdür|təsdiq|razıyam|ok)\b/.test(t)) return { action: 'confirm_listing' };
-    if (/ləğv|satmıram|vaz keçdim|vazkeçdim|istəmirəm/.test(t)) return { action: 'withdraw_listing' };
+    if (allow('confirm_listing') && /^(bəli|hə|düzdür|təsdiq|razıyam|ok|yes|correct|confirm)\b/.test(t)) return { action: 'confirm_listing' };
+    if (/ləğv|satmıram|vaz keçdim|vazkeçdim|istəmirəm|withdraw|don'?t want to sell/.test(t)) return { action: 'withdraw_listing' };
     const ex = offlineExtract(text, new Date().toISOString());
     const fields: FieldChanges = {};
     if (ex.qtyKg) fields.qtyKg = ex.qtyKg;
@@ -180,14 +191,14 @@ export function offlineTurn(text: string, ctx: TurnContext): Omit<Turn, 'mode'> 
       `Hi! Your listing is live: ${live.qtyKg} kg ${(live.product ?? '').toLowerCase()}. We'll tell you as soon as a buyer is found.`,
     );
   }
-  if (allow('new_listing') && (ctx.fromVoice || /(kilo|kq|manat|pomidor|xiyar|alma|kartof)/.test(t))) return { action: 'new_listing' };
+  if (allow('new_listing') && (ctx.fromVoice || /(kilo|kq|kg|manat|azn)/.test(t) || PRODUCE.test(t))) return { action: 'new_listing' };
   return r(
     'Salam! Mən BƏRƏKƏT köməkçisiyəm. Satmaq istədiyiniz məhsul barədə səsli mesaj və şəkil göndərin.',
     "Hi! I'm the BƏRƏKƏT assistant. Send a voice note and a photo of the produce you want to sell.",
   );
 }
 
-const PRODUCE = /(pomidor|xiyar|alma|kartof|bibər|soğan|armud|kələm|yerkökü|badımcan|heyva|xurma|lobya|fındıq|qoz)/;
+const PRODUCE = /(pomidor|xiyar|alma|kartof|bibər|soğan|armud|kələm|yerkökü|badımcan|heyva|xurma|lobya|fındıq|qoz|tomato|cucumber|apple|potato|pepper|onion|pear|cabbage|carrot|eggplant|aubergine|quince|persimmon|bean|hazelnut|walnut)/;
 
 /**
  * Unmistakable messages are routed without a model call: faster on stage, and nothing to wait for on a bad
@@ -195,11 +206,11 @@ const PRODUCE = /(pomidor|xiyar|alma|kartof|bibər|soğan|armud|kələm|yerkök�
  */
 export function quickTurn(text: string, ctx: TurnContext): Omit<Turn, 'mode'> | undefined {
   const t = wordsToDigits(text).trim().toLocaleLowerCase('az');
-  if ((ctx.situation === 'idle' || ctx.situation === 'live') && ctx.allowed.includes('new_listing') && PRODUCE.test(t) && /\d+\s*(kilo|kq|kg|ton|sentner)|\d+\s*(manat|qəpik)/.test(t)) {
+  if ((ctx.situation === 'idle' || ctx.situation === 'live') && ctx.allowed.includes('new_listing') && PRODUCE.test(t) && /\d+\s*(kilo|kq|kg|ton|sentner)|\d+\s*(manat|qəpik|azn)/.test(t)) {
     return { action: 'new_listing' };
   }
-  if (ctx.situation === 'offer' && /^(qəbul|qəbul edirəm|bəli|razıyam|1)\W*$/.test(t)) return { action: 'accept_offer' };
-  if (ctx.situation === 'order' && /(göndərə bilmirəm|verə bilmirəm|gətirə bilmirəm|sifarişi ləğv|ləğv edirəm)/.test(t)) {
+  if (ctx.situation === 'offer' && /^(qəbul|qəbul edirəm|bəli|razıyam|1|yes|accept|i accept|ok|okay)\W*$/.test(t)) return { action: 'accept_offer' };
+  if (ctx.situation === 'order' && /(göndərə bilmirəm|verə bilmirəm|gətirə bilmirəm|sifarişi ləğv|ləğv edirəm|can'?t deliver|cannot deliver|cancel (the|my) order)/.test(t)) {
     return { action: 'cancel_order', cause: /dolu/.test(t) ? 'Hail damaged the crop' : /xəstə/.test(t) ? 'Farmer is ill' : 'Farmer cannot deliver' };
   }
   return undefined;
@@ -210,7 +221,7 @@ export async function farmerTurn(text: string, ctx: TurnContext, aiMode: AiMode)
   const quick = quickTurn(text, ctx);
   if (quick) return { ...quick, mode: 'simulated', note: 'clear message, routed by rule' };
   const p = textProvider();
-  const input = JSON.stringify({ situation: ctx.situation, today: ctx.today, farmer: ctx.farmerFirstName, ...ctx.facts, allowed_actions: ctx.allowed, from_voice_note: ctx.fromVoice });
+  const input = JSON.stringify({ situation: ctx.situation, today: ctx.today, farmer: ctx.farmerFirstName, farmer_language: ctx.lang ?? 'az', ...ctx.facts, allowed_actions: ctx.allowed, from_voice_note: ctx.fromVoice });
   const live = p
     ? {
         provider: p.name,

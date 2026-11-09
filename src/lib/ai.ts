@@ -248,10 +248,9 @@ export function askingPrice(t: string): { value?: number; ambiguous: boolean } {
 export function offlineExtract(az: string, todayIso: string): Extracted {
   const t = wordsToDigits(az).toLocaleLowerCase('az');
   const out: Extracted = { confidence: {} };
-  if (/pomidor/.test(t)) out.product = 'Tomato';
-  else if (/xiyar/.test(t)) out.product = 'Cucumber';
-  else if (/alma/.test(t)) out.product = 'Apple';
-  else if (/kartof/.test(t)) out.product = 'Potato';
+  // Any known product name, Azerbaijani or English, as a whole word (longest names first: "tomatoes" before "tomato").
+  const word = Object.keys(PRODUCTS).sort((x, y) => y.length - x.length).find((k) => new RegExp(`(^|[^\\p{L}])${k}`, 'u').test(t));
+  if (word) out.product = PRODUCTS[word];
   if (out.product) out.confidence.product = 0.95;
   if (/roma/.test(t)) out.variety = 'Roma';
   else if (/çeri|cherry/.test(t)) out.variety = 'Cherry';
@@ -267,8 +266,8 @@ export function offlineExtract(az: string, todayIso: string): Extracted {
     out.priceAzn = price.value;
     out.confidence.priceAzn = price.ambiguous ? 0.55 : 0.9;
   }
-  if (/birinci sort|1-ci sort|əla/.test(t)) out.grade = 1;
-  else if (/ikinci sort|2-ci sort/.test(t)) out.grade = 2;
+  if (/birinci sort|1-ci sort|əla|grade (1|one)|first grade|top grade/.test(t)) out.grade = 1;
+  else if (/ikinci sort|2-ci sort|grade (2|two)|second grade/.test(t)) out.grade = 2;
   if (out.grade) out.confidence.grade = 0.8;
   const today = new Date(todayIso);
   if (/bu gün|bugün/.test(t)) out.harvest = todayIso.slice(0, 10);
@@ -292,8 +291,10 @@ export function offlineExtract(az: string, todayIso: string): Extracted {
 
 // Words the demo depends on. Biasing Scribe towards them costs 20% more per request and fixes the usual misses.
 const KEYTERMS = ['pomidor', 'Roma', 'manat', 'qəpik', 'kilo', 'birinci sort', 'dolu', 'BƏRƏKƏT'];
+const KEYTERMS_EN = ['tomatoes', 'Roma', 'manat', 'qapik', 'kilos', 'grade one', 'hail', 'BƏRƏKƏT'];
 
-export async function transcribe(audio: Buffer, mime: string, opts: { aiMode: AiMode; scriptedAz?: string }): Promise<{ text: string; mode: Mode; note?: string }> {
+export async function transcribe(audio: Buffer, mime: string, opts: { aiMode: AiMode; scriptedAz?: string; lang?: 'az' | 'en' }): Promise<{ text: string; mode: Mode; note?: string }> {
+  const en = opts.lang === 'en';
   const ext = mime.includes('ogg') ? 'ogg' : mime.includes('webm') ? 'webm' : mime.includes('mpeg') ? 'mp3' : mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : mime.includes('wav') ? 'wav' : 'audio';
   const live = hasElevenLabs()
     ? {
@@ -304,9 +305,9 @@ export async function transcribe(audio: Buffer, mime: string, opts: { aiMode: Ai
             {
               file: { data: audio, filename: `voice.${ext}`, contentType: mime.split(';')[0] },
               modelId: 'scribe_v2',
-              languageCode: 'aze',
+              languageCode: en ? 'eng' : 'aze',
               tagAudioEvents: false,
-              keyterms: KEYTERMS,
+              keyterms: en ? KEYTERMS_EN : KEYTERMS,
             },
             { timeoutInSeconds: TIMEOUT_MS() / 1000, maxRetries: 1 },
           );
@@ -317,7 +318,7 @@ export async function transcribe(audio: Buffer, mime: string, opts: { aiMode: Ai
       }
     : undefined;
   // A real recording has no script unless it is one of the demo voice notes; never invent one.
-  const r = await resolveAi('stt', hash('stt', audio), opts.aiMode, live, () => (opts.scriptedAz ? { text: opts.scriptedAz } : undefined));
+  const r = await resolveAi('stt', en ? hash('stt-en', audio) : hash('stt', audio), opts.aiMode, live, () => (opts.scriptedAz ? { text: opts.scriptedAz } : undefined));
   return { text: r.value.text, mode: r.mode, note: r.note };
 }
 
@@ -467,6 +468,9 @@ export async function extractListing(az: string, todayIso: string, aiMode: AiMod
   return { data, mode: r.mode, note: r.note };
 }
 
+export type PhotoProblem = 'not_produce' | 'not_a_real_photo' | 'screen' | 'cooked_or_processed' | 'unclear';
+export type Freshness = 'fresh' | 'aging' | 'old';
+
 export interface Inspection {
   product?: string;
   ripeness: number;
@@ -474,23 +478,55 @@ export interface Inspection {
   defects: string[];
   spoiled: boolean;
   note: string;
+  /** Why this photo cannot be used for a listing at all (undefined: usable). */
+  problem?: PhotoProblem;
+  freshness: Freshness;
+  /** Visible quality grade, 1 best to 3; undefined when the model could not tell. */
+  grade?: 1 | 2 | 3;
 }
 
-const INSPECT_SYSTEM = `You inspect a farmer's produce photo for a wholesale marketplace. Judge only what is visible.
-This is a visual estimate for buyers, not a food-safety certification.
-Tomato ripeness uses six stages: 1 Green, 2 Breaker, 3 Turning, 4 Pink, 5 Light red, 6 Red.
-Return ONLY JSON: {"product": English name, "ripeness": 1-6 (dominant stage), "confidence": 0-1,
-"defects": [short strings, e.g. "cracked skin on a few fruit"], "spoiled": true if rot, mould or heavy damage is visible,
-"note": one short sentence for a buyer}. Be conservative: if the photo is unclear or not produce, set confidence below 0.5.`;
+const INSPECT_SYSTEM = `You inspect a farmer's produce photo for a wholesale marketplace. Buyers pay for what the photo
+shows, so be strict: when in doubt, flag it. Judge only what is visible. This is a visual estimate, not a food-safety check.
+
+First decide whether the photo can be used at all ("problem"):
+- "not_produce": no fresh fruit, vegetables or nuts are the subject (a person, a room, an animal, an object, a document).
+- "not_a_real_photo": a drawing, cartoon, illustration, 3D render, meme, sticker, edited or AI-made image, or a stock or
+  advertising photo (watermark, studio white background, text overlay, perfect catalogue look).
+- "screen": a photo or screenshot of a phone, monitor or TV screen (moiré, pixels, glare, bezels, UI elements).
+- "cooked_or_processed": cooked, cut, juiced, canned, pickled or packaged retail produce rather than a harvested lot.
+- "unclear": too blurry, too dark, too far away or too cropped to judge the produce.
+- null: a real, recent camera photo of raw harvested produce.
+
+Then, for the produce itself:
+- "freshness": "fresh" (firm, glossy, taut skin, green calyx or stems), "aging" (some dull or slightly wrinkled skin,
+  dry or brown calyx, a few soft-looking fruit), "old" (widely wrinkled, shrivelled, wilted, limp, leaking, or long past
+  harvest). Put the signs you see in "defects".
+- "grade": 1 uniform size and shape, clean skin, no visible damage; 2 some blemishes, scars, uneven size or shape;
+  3 many cracks, bruises or misshapen fruit.
+- "spoiled": true if rot, mould, or heavy damage is visible.
+- Tomato ripeness uses six stages: 1 Green, 2 Breaker, 3 Turning, 4 Pink, 5 Light red, 6 Red.
+
+Return ONLY JSON: {"problem": one of the values above or null, "product": English name of the produce or null,
+"ripeness": 1-6 (dominant stage, tomatoes; 1-6 maturity for other produce), "confidence": 0-1 for the ripeness estimate,
+"freshness": "fresh" | "aging" | "old", "grade": 1-3, "defects": [short strings], "spoiled": true | false,
+"note": one short sentence for a buyer}.`;
+
+const PROBLEMS: PhotoProblem[] = ['not_produce', 'not_a_real_photo', 'screen', 'cooked_or_processed', 'unclear'];
 
 export function validateInspection(j: Record<string, unknown>): Inspection {
+  const product = typeof j.product === 'string' && !/^(n\/?a|none|null|unknown|not produce)/i.test(j.product.trim()) ? j.product : undefined;
+  const problem = PROBLEMS.includes(j.problem as PhotoProblem) ? (j.problem as PhotoProblem) : !product ? 'not_produce' : undefined;
+  const g = Math.round(num(j.grade) ?? NaN);
   return {
-    product: typeof j.product === 'string' ? j.product : undefined,
+    product,
     ripeness: Math.max(1, Math.min(6, Math.round(num(j.ripeness) ?? 4))),
     confidence: clamp01(j.confidence, 0.5),
     defects: Array.isArray(j.defects) ? j.defects.filter((d): d is string => typeof d === 'string').slice(0, 6) : [],
     spoiled: j.spoiled === true || j.spoiled === 'true',
     note: typeof j.note === 'string' ? j.note.slice(0, 240) : '',
+    problem,
+    freshness: j.freshness === 'aging' || j.freshness === 'old' ? j.freshness : 'fresh',
+    grade: g === 1 || g === 2 || g === 3 ? g : undefined,
   };
 }
 
@@ -502,6 +538,7 @@ export async function inspectPhoto(image: Buffer | undefined, mime: string, opts
     defects: opts.hintSpoiled ? ['Mould and split fruit visible'] : [],
     spoiled: !!opts.hintSpoiled,
     note: opts.hintSpoiled ? 'Visible mould on several fruit.' : 'Even colour, firm, no visible damage.',
+    freshness: 'fresh',
   });
   // The SVG placeholders are drawings, not photos: always scripted.
   if (!image || mime.includes('svg')) return { data: scripted(), mode: 'simulated', note: 'placeholder image' };
@@ -514,15 +551,16 @@ export async function inspectPhoto(image: Buffer | undefined, mime: string, opts
         run: async () => {
           const text = await complete(p, INSPECT_SYSTEM, [
             { type: 'image', source: { type: 'base64', media_type: media, data: image.toString('base64') } },
-            { type: 'text', text: 'Inspect this produce photo.' },
+            { type: 'text', text: 'Inspect this photo a farmer sent for a listing.' },
           ]);
           return validateInspection(parseJson<Record<string, unknown>>(text));
         },
       }
     : undefined;
   // A photo the team did not script (a real farmer's upload) gets no scripted verdict, only a low-confidence default.
-  const r = await resolveAi('inspect', hash('inspect', image), opts.aiMode, live, () =>
-    opts.hintStage ? scripted() : { ripeness: 4, confidence: 0.3, defects: [], spoiled: false, note: 'Not inspected: AI unavailable. Operator to check.' },
+  // v2: the stricter check (photo problems, freshness, grade); verdicts cached by the old prompt are not reused.
+  const r = await resolveAi('inspect', hash('inspect-v2', image), opts.aiMode, live, () =>
+    opts.hintStage ? scripted() : { ripeness: 4, confidence: 0.3, defects: [], spoiled: false, freshness: 'fresh' as const, note: 'Not inspected: AI unavailable. Operator to check.' },
   );
   return { data: r.value, mode: r.mode, note: r.note };
 }

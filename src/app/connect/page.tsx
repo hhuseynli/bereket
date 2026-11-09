@@ -1,51 +1,97 @@
 'use client';
-// Laptop page: QR codes that open each farmer's WhatsApp-style screen on a real phone (same Wi-Fi).
+// Laptop page: ONE QR code. Anyone who scans it creates their own farmer account and chats with the assistant
+// (through the public tunnel when it runs, so any phone on any network works). Sign-ups appear live on the right.
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useLang } from '@/components/lang';
 import { Shell } from '@/components/Shell';
 
-interface Pair { running: boolean; base?: string; ip?: string; fallback?: string; links?: { farmerId: string; name: string; url: string; svg: string }[] }
-const ROLE: Record<string, string> = { 'f-elsen': 'Acts 1, 2, 4: sells tomatoes', 'f-rauf': 'Act 3: cancels', 'f-sebine': 'Act 3: backup farmer', 'f-gulnare': 'Act 2: optional' };
+interface Pair {
+  join: { kind: 'internet' | 'wifi' | 'wifi-ip'; url: string; svg: string }[];
+  demo: { farmerId: string; name: string; svg: string }[];
+  signups: { id: string; name: string; village: string; lang: 'az' | 'en'; at: string; messages: number; listings: number; last: string }[];
+  tunnel: boolean;
+  wifi: boolean;
+}
 
 export default function Connect() {
+  const { t } = useLang();
   const [p, setP] = useState<Pair>();
+  const [pick, setPick] = useState(0);
   useEffect(() => {
-    const load = () => fetch('/api/pair', { cache: 'no-store' }).then((r) => r.json()).then(setP).catch(() => setP({ running: false }));
+    const load = () => fetch('/api/pair', { cache: 'no-store' }).then((r) => r.json()).then(setP).catch(() => undefined);
     load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    const id = setInterval(load, 4000);
+    return () => clearInterval(id);
   }, []);
+  const code = p?.join[Math.min(pick, (p?.join.length ?? 1) - 1)];
+  const label = (k: string) => (k === 'internet' ? t('Any phone, any network', 'İstənilən telefon, istənilən şəbəkə') : k === 'wifi' ? t('Same Wi-Fi as this laptop', 'Bu noutbukla eyni Wi-Fi') : t('Same Wi-Fi, by IP address', 'Eyni Wi-Fi, IP ünvanı ilə'));
+
   return (
     <Shell perspective="operator" active="connect">
-      <div style={{ padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 1200 }}>
-        <div>
-          <div className="eyebrow" style={{ color: 'var(--indigo)' }}>Farmer phones</div>
-          <h1 className="serif" style={{ fontSize: 36, fontWeight: 600 }}>Open WhatsApp on a real phone</h1>
-          <div className="muted" style={{ marginTop: 6, maxWidth: 760 }}>
-            Phones on the same Wi-Fi scan a code and become that farmer&apos;s WhatsApp. The first time, the phone warns the
-            connection is not private (a self-signed certificate, needed for the microphone): Android <b>Advanced → Proceed</b>,
-            iPhone <b>Show Details → visit this website</b>.
-          </div>
-        </div>
-        {!p && <div className="muted">Loading…</div>}
-        {p && !p.running && (
-          <div className="card" style={{ padding: '18px 22px', boxShadow: 'inset 0 0 0 1px var(--saffron)' }}>
-            Phone access is not running. In the terminal: <code>npm run demo:phone</code>
-          </div>
-        )}
-        {p?.running && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20 }}>
-            {p.links!.map((l) => (
-              <div key={l.farmerId} className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center' }}>
-                <div style={{ width: 210, height: 210, background: '#fff', padding: 6 }} dangerouslySetInnerHTML={{ __html: l.svg }} />
-                <b style={{ fontSize: 18 }}>{l.name}</b>
-                <span className="muted" style={{ fontSize: 13 }}>{ROLE[l.farmerId]}</span>
-                <span className="num muted" style={{ fontSize: 12 }}>{l.url}</span>
+      <div className="page">
+        <div className="page-cols" style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 1fr)' }}>
+          <section className="card" style={{ padding: '26px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, minHeight: 0, textAlign: 'center' }}>
+            <div className="eyebrow" style={{ color: 'var(--indigo)' }}>{t('Try it on your phone', 'Telefonunuzda sınayın')}</div>
+            <h1 className="serif" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1.1 }}>{t('Scan to join as a farmer', 'Fermer kimi qoşulmaq üçün skan edin')}</h1>
+            <div className="muted" style={{ fontSize: 15, maxWidth: 560 }}>
+              {t('Create your own account in 10 seconds, then talk to the assistant in Azerbaijani or English: say what you sell in a voice note, send a photo, fix anything by just saying it.',
+                'Hesabınızı 10 saniyəyə yaradın, sonra köməkçi ilə azərbaycanca və ya ingiliscə danışın: satdığınızı səsli mesajla deyin, şəkil göndərin, səhvi sadəcə deyərək düzəldin.')}
+            </div>
+            {!p && <div className="muted">{t('Loading…', 'Yüklənir…')}</div>}
+            {p && !code && (
+              <div className="card" style={{ padding: '18px 22px', boxShadow: 'inset 0 0 0 1px var(--saffron)', textAlign: 'left' }}>
+                {t('No link for phones yet. In the terminal:', 'Telefonlar üçün link hələ yoxdur. Terminalda:')} <code>npm run demo:phone -- --tunnel</code> {t('(internet) or', '(internet) və ya')} <code>npm run demo:phone</code> {t('(Wi-Fi)', '(Wi-Fi)')}
               </div>
-            ))}
-          </div>
-        )}
-        {p?.running && p.fallback && <div className="muted" style={{ fontSize: 13 }}>Links use this Mac&apos;s network name, so they keep working if the Wi-Fi address changes. A phone that cannot find this name (some Android phones): run <code>npm run demo:phone -- --ip</code> for codes that use the address <code>{p.fallback}</code> instead.</div>}
-        {p?.running && <div className="muted" style={{ fontSize: 13 }}>Venue Wi-Fi that blocks devices from seeing each other: connect the laptop to a phone hotspot and run <code>npm run demo:phone</code> again.</div>}
+            )}
+            {code && (
+              <>
+                <div className="fill" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, width: '100%' }}>
+                  <div style={{ height: '100%', maxHeight: 420, aspectRatio: '1', background: '#fff', padding: 12, boxShadow: '0 0 0 1px var(--hair)' }} dangerouslySetInnerHTML={{ __html: code.svg.replace('<svg', '<svg width="100%" height="100%"') }} />
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {p!.join.map((j, i) => (
+                    <button key={j.kind} className="chip" onClick={() => setPick(i)} aria-pressed={i === pick}
+                      style={{ border: 0, cursor: 'pointer', background: i === pick ? 'var(--soot)' : 'transparent', color: i === pick ? 'var(--paper)' : undefined }}>{label(j.kind)}</button>
+                  ))}
+                </div>
+                <div className="num muted" style={{ fontSize: 12, wordBreak: 'break-all', maxWidth: 560 }}>{code.url.replace(/\?c=.*/, '')}</div>
+                {code.kind !== 'internet' && <div className="muted" style={{ fontSize: 12.5, maxWidth: 560 }}>{t('Wi-Fi link: phones show a one-time "not private" warning (self-signed certificate): Advanced → Proceed (Android) or Show Details → visit this website (iPhone).', 'Wi-Fi linki: telefon bir dəfə "təhlükəsiz deyil" xəbərdarlığı göstərir: Advanced → Proceed (Android) və ya Show Details → visit this website (iPhone).')}</div>}
+              </>
+            )}
+          </section>
+
+          <aside className="card" aria-label={t('Signed up', 'Qoşulanlar')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: '20px 22px 8px', flex: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <h2 className="serif" style={{ fontSize: 22, fontWeight: 600 }}>{t('Signed up', 'Qoşulanlar')}</h2>
+              <span className="muted num" style={{ fontSize: 13 }}>{p?.signups.length ?? 0}</span>
+            </div>
+            <div className="scroll fill" style={{ padding: '0 22px 12px' }}>
+              {p && p.signups.length === 0 && <div className="muted" style={{ fontSize: 14 }}>{t('Nobody yet. New farmers appear here the moment they sign up.', 'Hələ heç kim. Yeni fermerlər qoşulan kimi burada görünəcək.')}</div>}
+              {p?.signups.map((f) => (
+                <Link key={f.id} href={`/wa/${f.id}`} target="_blank" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 12px', padding: '10px 0', borderBottom: '1px solid var(--hair2)' }}>
+                  <b>{f.name} <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>· {f.village} · {f.lang === 'en' ? 'EN' : 'AZ'}</span></b>
+                  <span className="num muted" style={{ fontSize: 12.5 }}>{new Date(f.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Baku' })}</span>
+                  <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.last || t('no messages yet', 'hələ mesaj yoxdur')}</span>
+                  <span className="num muted" style={{ fontSize: 12.5 }}>{f.messages} {t('msg', 'mesaj')} · {f.listings} {t('listings', 'elan')}</span>
+                </Link>
+              ))}
+            </div>
+            {p && p.demo.length > 0 && (
+              <details style={{ borderTop: '1px solid var(--hair)', padding: '12px 22px', flex: 'none' }}>
+                <summary className="muted" style={{ cursor: 'pointer', fontSize: 13.5 }}>{t('Presenter: the scripted demo farmers', 'Aparıcı: ssenari fermerləri')}</summary>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, paddingTop: 10 }}>
+                  {p.demo.map((d) => (
+                    <div key={d.farmerId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                      <div style={{ width: '100%', aspectRatio: '1', background: '#fff', padding: 3 }} dangerouslySetInnerHTML={{ __html: d.svg.replace('<svg', '<svg width="100%" height="100%"') }} />
+                      {d.name.split(' ')[0]}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </aside>
+        </div>
       </div>
     </Shell>
   );

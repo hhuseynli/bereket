@@ -54,7 +54,7 @@ const srv = await startServer({
   port,
   logFile: path.join(outDir, 'server.log'),
   env: {
-    DEMO_DATA_DIR: scratchDataDir('verify'), DEMO_RESTORE: '0', AI_MODE: 'simulated', WHATSAPP_CHANNEL: 'simulator',
+    DEMO_DATA_DIR: scratchDataDir('verify'), DEMO_RESTORE: '0', DEMO_DATA: '1', AI_MODE: 'simulated', WHATSAPP_CHANNEL: 'simulator',
     TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: TOKEN, PUBLIC_BASE_URL: PUBLIC, DEMO_ADMIN_TOKEN: ADMIN,
     FARMER_PHONES: 'f-elsen=+15550000001,f-sebine=+15550000003', DEMO_STEP_MS: '0', DEMO_RECOVERY_MS: '300',
   },

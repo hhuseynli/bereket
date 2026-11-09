@@ -229,7 +229,7 @@ the Twilio auth token and the DeepSeek key, so consider rotating both after the 
 | 6 | Elşən replies **1** | Listing **live**, confirmation delivered |
 | 7 | (script runs Act 2) Elşən replies **1** to the order | Elşən's allocation accepted |
 | 8 | Səbinə's phone sends **"Salam, pomidorlarım hələ satılmayıb."** | Her 24-hour window is open |
-| 9 | Rauf's phone sends a **voice note**: "Salam, bağışlayın. Dünən gecə dolu pomidorları vurdu, göndərə bilmirəm." | Operator → Live shows the 80 kg gap and Səbinə as the backup |
+| 9 | Rauf's phone sends a **voice note**: "Salam, bağışlayın. Dünən gecə dolu pomidorları vurdu, göndərə bilmirəm." | Operator → Logistics shows the 80 kg gap and Səbinə as the backup |
 | 10 | Optional: approve, Səbinə replies **1** | Order repaired at 1.35 ₼/kg |
 
 Results go to `.data/whatsapp-test.json`. A step you skip is reported as skipped, never as passed.

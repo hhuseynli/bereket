@@ -154,3 +154,48 @@ export function Loom({ label }: { label: string }) {
     </div>
   );
 }
+
+// ---------- Produce names ----------
+
+/** Products a buyer can ask for (the farmers' assistant knows the same list in Azerbaijani). */
+export const PRODUCTS = ['Tomato', 'Cucumber', 'Potato', 'Apple', 'Pear', 'Pepper', 'Onion', 'Cabbage', 'Carrot', 'Eggplant', 'Beans', 'Quince', 'Persimmon', 'Hazelnut', 'Walnut'];
+const PLURAL: Record<string, string> = { Tomato: 'tomatoes', Potato: 'potatoes', Cabbage: 'cabbage', Beans: 'green beans' };
+
+/** "tomatoes", "cucumbers" */
+export const produceName = (product: string) => PLURAL[product] ?? (/s$/i.test(product) ? product.toLowerCase() : `${product.toLowerCase()}s`);
+
+/** "Roma tomatoes", or "tomatoes" for any variety */
+export const tenderGoods = (t: { product: string; variety: string }) => `${/^any$/i.test(t.variety) ? '' : `${t.variety} `}${produceName(t.product)}`;
+
+/** The app's clock (the demo can move it), as the server keeps it. */
+export const appNow = (clock: { base: string; startedAtMs: number }) => new Date(new Date(clock.base).getTime() + (Date.now() - clock.startedAtMs));
+
+// ---------- Language-aware names (see components/lang.tsx) ----------
+
+const PRODUCT_AZ: Record<string, [string, string]> = {
+  Tomato: ['pomidor', 'pomidor'], Cucumber: ['xiyar', 'xiyar'], Potato: ['kartof', 'kartof'], Apple: ['alma', 'alma'], Pear: ['armud', 'armud'],
+  Pepper: ['bibər', 'bibər'], Onion: ['soğan', 'soğan'], Cabbage: ['kələm', 'kələm'], Carrot: ['yerkökü', 'yerkökü'], Eggplant: ['badımcan', 'badımcan'],
+  Beans: ['lobya', 'lobya'], Quince: ['heyva', 'heyva'], Persimmon: ['xurma', 'xurma'], Hazelnut: ['fındıq', 'fındıq'], Walnut: ['qoz', 'qoz'],
+};
+
+/** "tomatoes" / "pomidor" (Azerbaijani uses the singular for produce in bulk) */
+export const produceNameL = (product: string, lang: 'en' | 'az') => (lang === 'az' ? PRODUCT_AZ[product]?.[1] ?? product.toLowerCase() : produceName(product));
+
+/** The product name itself: "Tomato" / "Pomidor" */
+export const productL = (product: string, lang: 'en' | 'az') => (lang === 'az' ? (PRODUCT_AZ[product]?.[0] ?? product).replace(/^./, (c) => c.toLocaleUpperCase('az')) : product);
+
+/** "Roma tomatoes" / "Roma pomidor" */
+export const tenderGoodsL = (t: { product: string; variety: string }, lang: 'en' | 'az') =>
+  `${/^any$/i.test(t.variety) ? '' : `${lang === 'az' && t.variety === 'Local' ? 'yerli' : t.variety} `}${produceNameL(t.product, lang)}`;
+
+const AZ_WEEKDAY = ['B.', 'B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.', 'Ş.'];
+const AZ_MONTH = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek'];
+/** "Tue 10 Nov" / "Ç.a. 10 noy" (Baku time) */
+export const bakuDayL = (iso: string, lang: 'en' | 'az') => {
+  if (lang !== 'az') return bakuDay(iso);
+  const d = new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Baku' }));
+  return `${AZ_WEEKDAY[d.getDay()]} ${d.getDate()} ${AZ_MONTH[d.getMonth()]}`;
+};
+
+/** Ripeness stage name: "Light red" / "açıq qırmızı" */
+export const stageNameL = (stage: number, lang: 'en' | 'az') => { const s = stageInfo(stage); return lang === 'az' ? s.az : s.name; };
