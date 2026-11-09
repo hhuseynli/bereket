@@ -2,6 +2,7 @@ import {
   acceptPartial, cancelOrder, cancelTender, confirmProposal, confirmReceipt, createTender, director, findSupply, markDelivered,
   markPickedUp, operatorApproveListing, operatorApproveRecovery, operatorRejectListing, rateFarmer, retryRecovery, type TenderInput,
 } from '@/lib/flows';
+import { roleOf } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,8 @@ export async function POST(req: Request) {
       case 'approveListing': operatorApproveListing(String(b.listingId)); break;
       case 'rejectListing': operatorRejectListing(String(b.listingId)); break;
       case 'director': {
+        // Presenter controls (reset, modes, time skip, scripted farmers) need the presenter token.
+        if (roleOf(req).kind !== 'admin') return Response.json({ error: 'presenter only' }, { status: 403 });
         const op = String(b.op);
         const p = director(op, b.arg === undefined ? undefined : String(b.arg));
         if (QUICK.has(op)) await p;

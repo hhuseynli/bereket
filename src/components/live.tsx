@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { Readiness } from '@/lib/presenter';
 import type { State } from '@/lib/types';
 
-export type LiveState = State & { keys: { claude: boolean; elevenlabs: boolean; twilio: boolean }; presenter: Readiness };
+export type LiveState = State & { keys: { claude: boolean; elevenlabs: boolean; twilio: boolean }; presenter: Readiness; viewer?: string };
 
 interface Ctx {
   s: LiveState | null;

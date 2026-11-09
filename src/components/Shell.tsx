@@ -39,6 +39,7 @@ const KEYS: [string, string, string][] = [
 
 export function Shell({ perspective, active, children }: { perspective: Persp; active: string; children: React.ReactNode }) {
   const { s, act, connected } = useLive();
+  const presenter = !!s && (s.viewer === undefined || s.viewer === "admin"); // visitors see no presenter controls
   const { lang, setLang, t } = useLang();
   const router = useRouter();
   const path = usePathname();
@@ -61,6 +62,8 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const d = (op: string, arg?: string) => void act('director', { op, arg });
+      // Visitors navigate; the presenter keys (reset, modes, scripted farmers, time skip) are the presenter's only.
+      if (!presenter && !['b', 'o', 'escape'].includes(k)) return;
       if (k === 'p') setDock((v) => { const n = !v; try { localStorage.setItem('berekat.dock', n ? '1' : '0'); } catch { /* */ } return n; });
       else if (k === 'b') router.push('/buyer');
       else if (k === 'o') router.push('/operator');
@@ -79,7 +82,7 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [act, router, path]);
+  }, [act, router, path, presenter]);
 
   useVoiceAutoplay(speak, s?.messages);
 
@@ -140,8 +143,8 @@ export function Shell({ perspective, active, children }: { perspective: Persp; a
               </button>
             ))}
           </div>
-          {s && <AiModeChip mode={s.settings.aiMode} />}
-          {s && (
+          {s && presenter && <AiModeChip mode={s.settings.aiMode} />}
+          {s && presenter && (
             <button className="chip" aria-pressed={s.settings.demoData !== false} onClick={() => void act('director', { op: 'demoData' })}
               title={s.settings.demoData !== false
                 ? t("Seeded farms are listed. Click (or D) to match only listings from the farmers' phones", 'Nümunə təsərrüfatlar siyahıdadır. Yalnız fermerlərin telefonlarından gələn elanlara uyğunlaşdırmaq üçün klikləyin (və ya D)')

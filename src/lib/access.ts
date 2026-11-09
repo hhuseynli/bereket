@@ -12,13 +12,13 @@ export const joinCode = () => mac('join').slice(0, 12);
 /** Cookie value that lets a signed-up farmer into their own chat only. */
 export const farmerToken = (farmerId: string) => `${farmerId}.${mac(`farmer:${farmerId}`).slice(0, 32)}`;
 
-export type Role = { kind: 'admin' } | { kind: 'farmer'; farmerId: string } | { kind: 'join' } | { kind: 'none' };
+export type Role = { kind: 'admin' } | { kind: 'farmer'; farmerId: string } | { kind: 'public' } | { kind: 'none' };
 
 export function roleOf(req: Request): Role {
   const r = req.headers.get('x-berekat-role') ?? '';
   if (r === 'admin') return { kind: 'admin' };
   if (r.startsWith('farmer:')) return { kind: 'farmer', farmerId: r.slice(7) };
-  if (r === 'join') return { kind: 'join' };
+  if (r === 'public' || r === 'join') return { kind: 'public' };
   return { kind: 'none' };
 }
 

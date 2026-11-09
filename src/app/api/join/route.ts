@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     setFarmerLang(target, lang);
     return Response.json({ farmerId: target });
   }
-  if (role.kind !== 'join' && role.kind !== 'admin') return Response.json({ error: 'scan the join QR first' }, { status: 401 });
+  if (role.kind === 'none') return Response.json({ error: 'not allowed' }, { status: 401 });
   try {
     const farmerId = createFarmer({ name: String(b.name ?? ''), place: String(b.place ?? ''), lang });
     const proto = req.headers.get('x-forwarded-proto')?.split(',')[0].trim();

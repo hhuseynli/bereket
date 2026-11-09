@@ -83,16 +83,16 @@ try {
   const fd = new FormData(); fd.set('farmerId', 'f-nobody'); fd.set('text', 'x');
   await exp('Simulator: unknown farmer → 400', fetch(B + '/api/phone', { method: 'POST', body: fd }), 400);
   await exp('Media: bad id → 404', fetch(B + '/api/media/..%2F..%2Fetc%2Fpasswd'), [404, 400]);
-  // Access control through a tunnel
-  await exp('Tunnel visitor, no token: /api/state → 401', fetch(B + '/api/state', { headers: remote }), 401);
-  await exp('Tunnel visitor, no token: /api/action → 401', fetch(B + '/api/action', { method: 'POST', headers: { ...remote, 'content-type': 'application/json' }, body: '{"action":"director","op":"reset"}' }), 401);
-  await exp('Tunnel visitor, no token: /api/phone → 401', fetch(B + '/api/phone', { method: 'POST', headers: remote, body: fd }), 401);
-  await exp('Tunnel visitor, no token: /operator → 401', fetch(B + '/operator', { headers: remote }), 401);
-  await exp('Tunnel visitor, wrong key → 401', fetch(B + '/operator?key=wrong', { headers: remote, redirect: 'manual' }), 401);
-  const login = await exp('Tunnel visitor, ?key=token → cookie + redirect', fetch(B + '/operator?key=' + ADMIN, { headers: remote, redirect: 'manual' }), 307);
+  // Access control from outside (tunnel / hosting): the site is public, presenter controls and farmer chats are not
+  await exp('Visitor: /api/state → 200 (public site)', fetch(B + '/api/state', { headers: remote }), 200);
+  await exp('Visitor: presenter action (reset) → 403', fetch(B + '/api/action', { method: 'POST', headers: { ...remote, 'content-type': 'application/json' }, body: '{"action":"director","op":"reset"}' }), 403);
+  await exp('Visitor: write as a farmer → 403', fetch(B + '/api/phone', { method: 'POST', headers: remote, body: fd }), [400, 403]);
+  await exp('Visitor: /operator → 200', fetch(B + '/operator', { headers: remote }), 200);
+  await exp("Visitor: a farmer's chat → sign-up", fetch(B + '/wa/f-elsen', { headers: remote, redirect: 'manual' }), 307);
+  const login = await exp('Presenter: ?key=token → cookie + redirect', fetch(B + '/operator?key=' + ADMIN, { headers: remote, redirect: 'manual' }), 307);
   const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
   http.push(['Login cookie is HttpOnly + Secure', /HttpOnly/i.test(login.headers.get('set-cookie') ?? '') && /Secure/i.test(login.headers.get('set-cookie') ?? ''), '']);
-  await exp('Tunnel visitor with cookie: /api/state → 200', fetch(B + '/api/state', { headers: { ...remote, cookie } }), 200);
+  await exp('Presenter with cookie: presenter action → 200', fetch(B + '/api/action', { method: 'POST', headers: { ...remote, cookie, 'content-type': 'application/json' }, body: '{"action":"director","op":"voice","arg":"on"}' }), 200);
   // Twilio webhook
   await exp('Webhook: unsigned → 403', fetch(B + '/api/twilio', { method: 'POST', headers: remote, body: 'MessageSid=SMx&From=whatsapp%3A%2B15550000001' }), 403);
   await exp('Webhook: forged signature → 403', fetch(B + '/api/twilio', { method: 'POST', headers: { ...remote, 'x-twilio-signature': 'AAAA' }, body: 'MessageSid=SMx&From=whatsapp%3A%2B15550000001' }), 403);
@@ -112,7 +112,7 @@ try {
   await waitFor(async () => (await state(port)).events.some((e) => /Could not download image/.test(e.title)), { what: 'media refusal logged', timeout: 8000 });
   http.push(['Refused media is reported to the operator and the farmer asked to resend', true, '']);
   await exp('Voice clip URL reachable through a tunnel (Twilio fetches it), unknown id → 404 not 401', fetch(B + '/api/voice/' + 'a'.repeat(32) + '.mp3', { headers: remote }), 404);
-  await exp('Voice clip URL rejects anything but a clip id → 401 through a tunnel', fetch(B + '/api/voice/../state', { headers: remote }), [401, 404]);
+  await exp('Voice clip URL: anything but a clip id → 404', fetch(B + '/api/voice/not-a-clip.mp3', { headers: remote }), 404);
   await exp('Status callback: signed → 204', twilioPost({ MessageSid: 'SMnone', MessageStatus: 'delivered' }, '/api/twilio/status'), 204);
   for (const [n, ok, d] of http) r.add(ok ? 'PASS' : 'FAIL', n, d);
   T('HTTP API, access control, Twilio webhook security', http.every((x) => x[1]) ? 'LOCAL' : 'FAILED', `${http.filter((x) => x[1]).length}/${http.length} checks (signed requests built with a test token)`);

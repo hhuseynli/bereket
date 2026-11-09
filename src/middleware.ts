@@ -1,17 +1,15 @@
-// Access control for when the app is reachable from outside the laptop (LAN relay or a public tunnel).
-// The server listens on 127.0.0.1 only, so a request is local only when its Host is loopback and every
-// forwarded address is loopback (Next.js itself adds x-forwarded-for: 127.0.0.1; ngrok appends the real
-// client address; cloudflared always adds cf-connecting-ip). Anything else came from outside. Three ways in:
-//  - the presenter token (DEMO_ADMIN_TOKEN): open the app once with ?key=<token>, an httpOnly cookie is set;
-//  - the join QR (/join?c=<code>): anyone with it may create a farmer account, and nothing else;
-//  - a farmer account: a signed cookie that opens that farmer's own chat (/wa/<id>) and its APIs only.
-// The decision is passed to routes in x-berekat-role (any incoming value is overwritten).
+// Access control for when the app is reachable from outside the laptop (LAN relay, tunnel or hosting).
+// The site is open to everyone: anyone can browse the buyer and operator screens and sign up as a farmer.
+// Two things stay protected:
+//  - presenter controls (reset, AI mode, demo data, time skip, scripted farmers): need the presenter token
+//    (DEMO_ADMIN_TOKEN; open the app once with ?key=<token>, an httpOnly cookie is set). Local requests count too.
+//  - farmer chats: a farmer account (signed cookie from the join page) opens and writes in its own chat only.
+// The decision is passed to routes in x-berekat-role (any incoming value is overwritten): admin, farmer:<id>, public.
 // The Twilio webhooks are exempt: they check Twilio's signature.
 import { NextResponse, type NextRequest } from 'next/server';
 
 const COOKIE = 'berekat_admin';
 const FARMER_COOKIE = 'berekat_farmer';
-const JOIN_COOKIE = 'berekat_join';
 const TUNNEL_HEADERS = ['cf-connecting-ip', 'cf-ray', 'x-real-ip', 'forwarded', 'ngrok-trace-id'];
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]', '::1', '::ffff:127.0.0.1'];
 
@@ -78,36 +76,22 @@ export async function middleware(req: NextRequest) {
   const cookie = req.cookies.get(COOKIE)?.value ?? '';
   if (token.length >= 16 && same(cookie, token)) return pass(req, 'admin');
 
-  // A farmer who signed up from the join QR: their own chat and the APIs behind it.
+  // A farmer account (made from the join page): their own chat, and the rest of the site like any visitor.
+  let farmerId: string | undefined;
   const ft = req.cookies.get(FARMER_COOKIE)?.value ?? '';
   const dot = ft.lastIndexOf('.');
   if (dot > 0) {
     const id = ft.slice(0, dot);
-    if (/^f-[a-z0-9-]{3,40}$/.test(id) && same(ft.slice(dot + 1), (await hmac(`farmer:${id}`)).slice(0, 32))) {
-      const own = `/wa/${id}`;
-      if (pathname === own || pathname === '/api/state' || pathname === '/api/events' || pathname === '/api/phone'
-        || pathname === '/api/join' || /^\/api\/media\/[\w.-]+$/.test(pathname) || pathname.startsWith('/demo/')) return pass(req, `farmer:${id}`);
-      // anything else (the join page again, another chat, the presenter screens): back to their own chat
-      if (!pathname.startsWith('/api/')) return NextResponse.redirect(`${origin}${own}`, 307);
-      return NextResponse.json({ error: 'not allowed for a farmer account' }, { status: 403 });
-    }
+    if (/^f-[a-z0-9-]{3,40}$/.test(id) && same(ft.slice(dot + 1), (await hmac(`farmer:${id}`)).slice(0, 32))) farmerId = id;
   }
 
-  // The join QR: /join?c=<code> sets a cookie; with it, only the sign-up page and its API.
-  const code = (await hmac('join')).slice(0, 12);
-  const c = searchParams.get('c');
-  if (pathname === '/join' && c && same(c, code)) {
-    const res = NextResponse.redirect(`${origin}/join`, 307);
-    res.cookies.set(JOIN_COOKIE, code, { httpOnly: true, secure, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 });
-    return res;
+  // Farmer chats: only your own. Visitors without an account are sent to sign up.
+  if (pathname === '/wa' || pathname.startsWith('/wa/')) {
+    if (farmerId && pathname === `/wa/${farmerId}`) return pass(req, `farmer:${farmerId}`);
+    return NextResponse.redirect(`${origin}${farmerId ? `/wa/${farmerId}` : '/join'}`, 307);
   }
-  if (same(req.cookies.get(JOIN_COOKIE)?.value ?? '', code) && (pathname === '/join' || pathname === '/api/join' || pathname.startsWith('/demo/'))) return pass(req, 'join');
-
-  if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'presenter token required' }, { status: 401 });
-  return new NextResponse('BƏRƏKƏT: scan the join QR code to create your account. / Hesab yaratmaq üçün QR kodu skan edin.', {
-    status: 401,
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-  });
+  // Everything else is open to everyone; presenter-only actions are checked in the routes (x-berekat-role).
+  return pass(req, farmerId ? `farmer:${farmerId}` : 'public');
 }
 
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg).*)'] };

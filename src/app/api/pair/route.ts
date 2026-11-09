@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import QRCode from 'qrcode';
-import { joinCode } from '@/lib/access';
+import { joinCode, roleOf } from '@/lib/access';
 import { dataDir } from '@/lib/paths';
 import { getState } from '@/lib/store';
 
@@ -14,7 +14,8 @@ const read = (name: string) => { try { return JSON.parse(fs.readFileSync(dataDir
 // The join QR (anyone may create a farmer account with it), through the public tunnel when it runs and on the
 // local network otherwise; the presenter's per-farmer demo links; and who has signed up. The demo links carry
 // the presenter token, so this route is only reachable from the laptop itself or with that token.
-export async function GET() {
+export async function GET(req: Request) {
+  const admin = roleOf(req).kind === 'admin';
   const tunnel = read('tunnel.json') as { url?: string; pid?: number } | undefined;
   const lan = read('phone.json') as { base?: string; ip?: string; fallback?: string; mode?: string } | undefined;
   const code = joinCode();
@@ -31,7 +32,8 @@ export async function GET() {
     if (lan.fallback) join.push({ kind: 'wifi-ip', url: `${lan.fallback}/join?c=${code}`, svg: await qr(`${lan.fallback}/join?c=${code}`) });
   }
   const demoBase = hosted || (tunnel?.url && alive(tunnel.pid) ? tunnel.url : lan?.base);
-  const demo = demoBase
+  // The demo-farmer links carry the presenter token: only for the presenter.
+  const demo = demoBase && admin
     ? await Promise.all(PHONES.map(async (id) => ({ farmerId: id, name: s.farmers.find((f) => f.id === id)?.name ?? id, svg: await qr(`${demoBase}/wa/${id}?key=${token}`) })))
     : [];
   const signups = s.farmers.filter((f) => f.selfSignup).map((f) => {
