@@ -504,10 +504,11 @@ Then, for the produce itself:
 - "grade": 1 uniform size and shape, clean skin, no visible damage; 2 some blemishes, scars, uneven size or shape;
   3 many cracks, bruises or misshapen fruit.
 - "spoiled": true if rot, mould, or heavy damage is visible.
-- Tomato ripeness uses six stages: 1 Green, 2 Breaker, 3 Turning, 4 Pink, 5 Light red, 6 Red.
+- Tomato ripeness uses six stages: 1 Green, 2 Breaker, 3 Turning, 4 Pink, 5 Light red, 6 Red. Only tomatoes get a
+  stage: for any other produce return "ripeness": null (judge freshness and grade instead).
 
 Return ONLY JSON: {"problem": one of the values above or null, "product": English name of the produce or null,
-"ripeness": 1-6 (dominant stage, tomatoes; 1-6 maturity for other produce), "confidence": 0-1 for the ripeness estimate,
+"ripeness": 1-6 for tomatoes (dominant stage), null otherwise, "confidence": 0-1 for your inspection,
 "freshness": "fresh" | "aging" | "old", "grade": 1-3, "defects": [short strings], "spoiled": true | false,
 "note": one short sentence for a buyer}.`;
 
@@ -559,7 +560,7 @@ export async function inspectPhoto(image: Buffer | undefined, mime: string, opts
     : undefined;
   // A photo the team did not script (a real farmer's upload) gets no scripted verdict, only a low-confidence default.
   // v2: the stricter check (photo problems, freshness, grade); verdicts cached by the old prompt are not reused.
-  const r = await resolveAi('inspect', hash('inspect-v2', image), opts.aiMode, live, () =>
+  const r = await resolveAi('inspect', hash('inspect-v3', image), opts.aiMode, live, () =>
     opts.hintStage ? scripted() : { ripeness: 4, confidence: 0.3, defects: [], spoiled: false, freshness: 'fresh' as const, note: 'Not inspected: AI unavailable. Operator to check.' },
   );
   return { data: r.value, mode: r.mode, note: r.note };

@@ -309,8 +309,12 @@ export function planRecovery(state: State, order: Order, cancelledFarmerId: stri
     const nearest = Math.min(...keptStops.map((s) => roadKm(s, c.farmer)));
     return {
       ...base, qtyKg: shortfall, accepted: true, costs, route,
-      why: `Same grade, stage ${c.listing.ripeness} like the lost lot, ${Math.round(nearest)} km from the nearest pickup.`,
-      whyAz: `Eyni sort, itirilən partiya kimi ${ordAz(c.listing.ripeness)} mərhələ, ən yaxın götürmə nöqtəsindən ${Math.round(nearest)} km.`,
+      why: tracksRipeness(tender.product)
+        ? `Same grade, stage ${c.listing.ripeness} like the lost lot, ${Math.round(nearest)} km from the nearest pickup.`
+        : `Grade ${c.listing.grade}, ${Math.round(nearest)} km from the nearest pickup.`,
+      whyAz: tracksRipeness(tender.product)
+        ? `Eyni sort, itirilən partiya kimi ${ordAz(c.listing.ripeness)} mərhələ, ən yaxın götürmə nöqtəsindən ${Math.round(nearest)} km.`
+        : `${c.listing.grade}-ci sort, ən yaxın götürmə nöqtəsindən ${Math.round(nearest)} km.`,
     };
   });
   out.sort((a, b) => Number(b.accepted) - Number(a.accepted) || (a.costs?.total ?? 1e9) - (b.costs?.total ?? 1e9));

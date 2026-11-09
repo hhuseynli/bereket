@@ -4,11 +4,13 @@ import { STAGES } from './ripeness';
 import type { Message } from './types';
 
 const TITLE: Record<string, string> = { 'Elanınız hazırdır': 'Your listing is ready', 'Yeni sifariş': 'New order' };
-const ROW: Record<string, string> = { Məhsul: 'Product', Miqdar: 'Quantity', Qiymət: 'Price', Sort: 'Grade', Yetişmə: 'Ripeness', Alıcı: 'Buyer', Məbləğ: 'Total' };
+const ROW: Record<string, string> = { Məhsul: 'Product', Miqdar: 'Quantity', Qiymət: 'Price', Sort: 'Grade', Yetişmə: 'Ripeness', Təzəlik: 'Freshness', Alıcı: 'Buyer', Məbləğ: 'Total' };
+const FRESH: Record<string, string> = { təzə: 'fresh', 'təzəliyini itirməyə başlayıb': 'starting to age', 'köhnə görünür': 'looks old' };
 const ACTION: Record<string, string> = { Təsdiq: 'Confirm', Düzəliş: 'Edit', Qəbul: 'Accept', İmtina: 'Decline' };
 const PRODUCT: Record<string, string> = { Pomidor: 'Tomato', Xiyar: 'Cucumber', Alma: 'Apple', Kartof: 'Potato', Bibər: 'Pepper', Soğan: 'Onion', Armud: 'Pear', Kələm: 'Cabbage', Yerkökü: 'Carrot', Badımcan: 'Eggplant', Lobya: 'Beans', Heyva: 'Quince', Xurma: 'Persimmon', Fındıq: 'Hazelnut', Qoz: 'Walnut' };
 
 function value(v: string) {
+  if (FRESH[v]) return FRESH[v];
   let out = v
     .replace(/\bkq\b/g, 'kg')
     .replace(/\bbu gün\b/g, 'today')

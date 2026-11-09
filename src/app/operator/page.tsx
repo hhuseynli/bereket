@@ -5,6 +5,7 @@ import { RegionMap } from '@/components/RegionMap';
 import { Shell } from '@/components/Shell';
 import { useLang } from '@/components/lang';
 import { appNow, azn, bakuDayL, bakuTime, Loom, Medallion, tenderGoodsL, Thread, Weave, weaveParts } from '@/components/ui';
+import { tracksRipeness } from '@/lib/ripeness';
 import type { LedgerEvent, Order } from '@/lib/types';
 
 type T = (en: string, az: string) => string;
@@ -207,7 +208,7 @@ export default function Logistics() {
                   <Thread color={f(cand.farmerId)!.color} h={34} />
                   <div>
                     <div style={{ fontSize: 17, fontWeight: 600 }}>{f(cand.farmerId)!.name}</div>
-                    <div className="muted num" style={{ fontSize: 13 }}>{f(cand.farmerId)!.village} · {cand.qtyKg} {tr('kg', 'kq')} · {tr('stage', 'mərhələ')} {Math.round(s.listings.find((l) => l.id === cand.listingId)?.ripeness ?? 4)} · {cand.priceAzn.toFixed(2)} ₼/{tr('kg', 'kq')} · ★ {f(cand.farmerId)!.rating}</div>
+                    <div className="muted num" style={{ fontSize: 13 }}>{f(cand.farmerId)!.village} · {cand.qtyKg} {tr('kg', 'kq')} · {tracksRipeness(tender?.product ?? 'Tomato') ? <>{tr('stage', 'mərhələ')} {Math.round(s.listings.find((l) => l.id === cand.listingId)?.ripeness ?? 4)} · </> : null}{cand.priceAzn.toFixed(2)} ₼/{tr('kg', 'kq')} · ★ {f(cand.farmerId)!.rating}</div>
                   </div>
                 </div>
                 <div className="note" style={{ fontSize: 16 }}>{loc(cand.why, cand.whyAz)}</div>

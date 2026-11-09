@@ -280,7 +280,7 @@ export default function WaChat({ params }: { params: { farmer: string } }) {
       </header>
 
       {/* Messages */}
-      <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '8px 10px 14px', display: 'flex', flexDirection: 'column', gap: 2, background: v('bg'), backgroundImage: v('wall'), backgroundSize: '220px 220px' }}>
+      <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '8px 10px 14px', display: 'flex', flexDirection: 'column', gap: 2, background: v('bg'), backgroundImage: v('wall'), backgroundSize: '320px 320px' }}>
         <div style={{ alignSelf: 'center', background: v('banner'), color: v('banner-text'), fontSize: 12.5, lineHeight: 1.35, textAlign: 'center', borderRadius: 10, padding: '7px 12px', margin: '6px 16px 10px', maxWidth: 340 }}>
           🔒 {tr('Demo: mesajları BƏRƏKƏT köməkçisi cavablandırır. Real pul köçürülmür.', 'Demo: messages are answered by the BƏRƏKƏT assistant. No real money moves.')}
         </div>

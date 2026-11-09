@@ -573,6 +573,9 @@ async function onPhoto(farmerId: string, photo: PhotoIn, voiceComing = false) {
   say(farmerId, 'Şəkil alındı. İndi məhsul, miqdar və qiymət barədə səsli mesaj göndərin.', 'Photo received. Now send a voice note about the product, quantity and price.');
 }
 
+const isTomato = (product?: string) => tracksRipeness(canonicalProduct(product) ?? product ?? 'Tomato');
+const FRESH_AZ = { fresh: 'təzə', aging: 'təzəliyini itirməyə başlayıb', old: 'köhnə görünür' } as const;
+
 async function inspectInto(run: AiRun, photo: PhotoIn, modes: Mode[]) {
   const s = getState();
   return step(run, 'inspect', async () => {
@@ -583,13 +586,13 @@ async function inspectInto(run: AiRun, photo: PhotoIn, modes: Mode[]) {
       ? `Photo not usable: ${PHOTO_REJECT[d.problem].why}${d.note ? ` (${d.note})` : ''}`
       : d.spoiled
         ? `Spoilage visible: ${d.defects.join(', ')}`
-        : `${d.product ? `${d.product} · ` : ''}Stage ${d.ripeness}, ${stageInfo(d.ripeness).name} · ${Math.round(d.confidence * 100)}% confidence${d.freshness !== 'fresh' ? ` · looks ${d.freshness}` : ''}${d.grade ? ` · grade ${d.grade} by eye` : ''}${d.defects.length ? ` · ${d.defects.join(', ')}` : ''}`;
+        : `${d.product ? `${d.product} · ` : ''}${isTomato(d.product) ? `Stage ${d.ripeness}, ${stageInfo(d.ripeness).name}` : `Looks ${d.freshness}`} · ${Math.round(d.confidence * 100)}% confidence${isTomato(d.product) && d.freshness !== 'fresh' ? ` · looks ${d.freshness}` : ''}${d.grade ? ` · grade ${d.grade} by eye` : ''}${d.defects.length ? ` · ${d.defects.join(', ')}` : ''}`;
     const seenAz = d.product ? AZ_PRODUCT[canonicalProduct(d.product) ?? ''] ?? d.product : '';
     const outputAz = d.problem
       ? `Şəkil yararsızdır: ${PHOTO_REJECT[d.problem].whyAz}${d.note ? ` (${d.note})` : ''}`
       : d.spoiled
         ? `Xarablıq görünür: ${d.defects.join(', ')}`
-        : `${seenAz ? `${seenAz} · ` : ''}Mərhələ ${d.ripeness}, ${stageInfo(d.ripeness).az} · ${Math.round(d.confidence * 100)}% əminlik${d.freshness !== 'fresh' ? ` · ${d.freshness === 'old' ? 'köhnə görünür' : 'təzəliyini itirməyə başlayıb'}` : ''}${d.grade ? ` · gözlə sort ${d.grade}` : ''}${d.defects.length ? ` · ${d.defects.join(', ')}` : ''}`;
+        : `${seenAz ? `${seenAz} · ` : ''}${isTomato(d.product) ? `Mərhələ ${d.ripeness}, ${stageInfo(d.ripeness).az}` : FRESH_AZ[d.freshness]} · ${Math.round(d.confidence * 100)}% əminlik${isTomato(d.product) && d.freshness !== 'fresh' ? ` · ${FRESH_AZ[d.freshness]}` : ''}${d.grade ? ` · gözlə sort ${d.grade}` : ''}${d.defects.length ? ` · ${d.defects.join(', ')}` : ''}`;
     return { value: d, mode: r.mode, note: r.note, output, outputAz };
   });
 }
@@ -720,7 +723,8 @@ async function addPhotoToListing(l: Listing, photo: PhotoIn) {
     l.status = 'withdrawn';
     return holdPhoto(l.farmerId, run, v);
   }
-  Object.assign(l, { photoUrl: photo.url, ripeness: insp.ripeness, ripenessConfidence: insp.confidence, defects: insp.defects });
+  Object.assign(l, { photoUrl: photo.url, ripeness: insp.ripeness, ripenessConfidence: insp.confidence, defects: insp.defects, freshness: insp.freshness });
+  run.freshness = insp.freshness;
   if (v.minGrade && v.minGrade > l.grade) {
     recordEdit(run, 'grade', String(l.grade), `${v.minGrade} (from the photo)`);
     l.grade = v.minGrade;
@@ -731,8 +735,8 @@ async function addPhotoToListing(l: Listing, photo: PhotoIn) {
   run.waitingForAz = undefined;
   ledger({
     type: 'listing', tone: 'neutral', title: `${first(l.farmerId)} added a photo`, titleAz: `${first(l.farmerId)} şəkil əlavə etdi`,
-    detail: `Stage ${insp.ripeness} · grade ${l.grade} · ${l.qtyKg} kg ${l.product.toLowerCase()}`,
-    detailAz: `Mərhələ ${insp.ripeness} · sort ${l.grade} · ${l.qtyKg} kq ${azp(l.product)}`,
+    detail: `${tracksRipeness(l.product) ? `Stage ${insp.ripeness}` : `Looks ${insp.freshness}`} · grade ${l.grade} · ${l.qtyKg} kg ${l.product.toLowerCase()}`,
+    detailAz: `${tracksRipeness(l.product) ? `Mərhələ ${insp.ripeness}` : FRESH_AZ[insp.freshness]} · sort ${l.grade} · ${l.qtyKg} kq ${azp(l.product)}`,
   });
   say(l.farmerId, v.az ?? 'Şəkil elana əlavə olundu. Təşəkkürlər!', v.en ?? 'The photo was added to your listing. Thank you!');
 }
@@ -743,7 +747,7 @@ async function finishIntake(farmerId: string) {
   const run = runOf(it);
   const ex = it.extracted!;
 
-  type Kept = { ripeness: number; confidence: number; defects: string[]; minGrade?: 2 | 3; az?: string; en?: string };
+  type Kept = { ripeness: number; confidence: number; defects: string[]; freshness?: Inspection['freshness']; minGrade?: 2 | 3; az?: string; en?: string };
   let insp: Kept | undefined = (it as Intake & { insp?: Kept }).insp;
   if (run.steps[2].status === 'pending' && it.photo) {
     const raw = await inspectInto(run, it.photo, it.modes);
@@ -763,7 +767,8 @@ async function finishIntake(farmerId: string) {
         intakes().delete(farmerId);
         return holdPhoto(farmerId, run, v);
       }
-      insp = { ripeness: raw.ripeness, confidence: raw.confidence, defects: raw.defects, minGrade: v.minGrade, az: v.az, en: v.en };
+      insp = { ripeness: raw.ripeness, confidence: raw.confidence, defects: raw.defects, freshness: raw.freshness, minGrade: v.minGrade, az: v.az, en: v.en };
+      run.freshness = raw.freshness;
       (it as Intake & { insp?: Kept }).insp = insp;
     }
   } else if (run.steps[2].status === 'pending') {
@@ -799,6 +804,7 @@ async function finishIntake(farmerId: string) {
     qtyKg: ex.qtyKg,
     priceAzn: ex.priceAzn,
     ripeness: insp?.ripeness ?? 0,
+    freshness: insp?.freshness,
     ripenessConfidence: insp?.confidence ?? 0,
     defects: insp?.defects ?? [],
     harvest: ex.harvest ?? now().slice(0, 10),
@@ -814,8 +820,8 @@ async function finishIntake(farmerId: string) {
   };
   await step(run, 'draft', async () => ({
     value: null,
-    output: `${listing.qtyKg} kg ${listing.variety} at ${fmt(listing.priceAzn)} ₼${insp ? `, stage ${listing.ripeness}` : ', no photo yet'}, sent to ${first(farmerId)} to confirm`,
-    outputAz: `${listing.qtyKg} kq ${listing.variety}, ${fmt(listing.priceAzn)} ₼${insp ? `, mərhələ ${listing.ripeness}` : ', hələ şəkil yoxdur'}, təsdiq üçün ${first(farmerId)} fermerinə göndərildi`,
+    output: `${listing.qtyKg} kg ${listing.variety} at ${fmt(listing.priceAzn)} ₼${insp ? (tracksRipeness(listing.product) ? `, stage ${listing.ripeness}` : `, looks ${listing.freshness ?? 'fresh'}`) : ', no photo yet'}, sent to ${first(farmerId)} to confirm`,
+    outputAz: `${listing.qtyKg} kq ${listing.variety}, ${fmt(listing.priceAzn)} ₼${insp ? (tracksRipeness(listing.product) ? `, mərhələ ${listing.ripeness}` : `, ${FRESH_AZ[listing.freshness ?? 'fresh']}`) : ', hələ şəkil yoxdur'}, təsdiq üçün ${first(farmerId)} fermerinə göndərildi`,
   }));
   s.listings.push(listing);
   run.listingId = listing.id;
@@ -825,8 +831,8 @@ async function finishIntake(farmerId: string) {
   intakes().delete(farmerId);
   ledger({
     type: 'ai', tone: 'ai', title: `AI drafted a listing for ${first(farmerId)}`, titleAz: `Sİ ${first(farmerId)} üçün elan hazırladı`,
-    detail: `${listing.qtyKg} kg ${listing.variety} ${listing.product.toLowerCase()}${insp ? `, stage ${listing.ripeness}` : ', no photo yet'}`,
-    detailAz: `${listing.qtyKg} kq ${listing.variety} ${azp(listing.product)}${insp ? `, mərhələ ${listing.ripeness}` : ', hələ şəkil yoxdur'}`,
+    detail: `${listing.qtyKg} kg ${listing.variety} ${listing.product.toLowerCase()}${insp ? (tracksRipeness(listing.product) ? `, stage ${listing.ripeness}` : `, looks ${listing.freshness ?? 'fresh'}`) : ', no photo yet'}`,
+    detailAz: `${listing.qtyKg} kq ${listing.variety} ${azp(listing.product)}${insp ? (tracksRipeness(listing.product) ? `, mərhələ ${listing.ripeness}` : `, ${FRESH_AZ[listing.freshness ?? 'fresh']}`) : ', hələ şəkil yoxdur'}`,
   });
 
   // Ask the farmer to double-check what the AI was unsure about, in plain words.
@@ -846,11 +852,14 @@ function sendDraftCard(l: Listing, leadAz?: string, leadEn?: string, aiMode?: Mo
     run.waitingForAz = `WhatsApp-da təsdiq${l.ripenessConfidence ? '' : ' və şəkil'}`;
   }
   const harvestAz = sameBakuDay(l.harvest + 'T08:00:00Z', now()) ? 'bu gün' : l.harvest.split('-').reverse().slice(0, 2).join('.');
-  const ripeAz = l.ripenessConfidence ? `${l.ripeness}/6, ${stageInfo(l.ripeness).az}` : 'şəkil gözlənilir';
+  // Tomatoes: the ripeness stage. Everything else: how fresh it looks.
+  const tomato = tracksRipeness(l.product);
+  const ripeAz = !l.ripenessConfidence ? 'şəkil gözlənilir' : tomato ? `${l.ripeness}/6, ${stageInfo(l.ripeness).az}` : FRESH_AZ[l.freshness ?? 'fresh'];
+  const ripeEn = !l.ripenessConfidence ? 'photo needed' : tomato ? `${l.ripeness}/6` : `looks ${l.freshness ?? 'fresh'}`;
   sendToFarmer(l.farmerId, {
     kind: 'card',
     text: leadAz ?? '',
-    textEn: `${leadEn ? `${leadEn} ` : ''}Your listing: ${l.product} (${l.variety}), ${l.qtyKg} kg, ${fmt(l.priceAzn)} ₼/kg, grade ${l.grade}, ripeness ${l.ripenessConfidence ? `${l.ripeness}/6` : 'photo needed'}, harvest ${harvestAz === 'bu gün' ? 'today' : harvestAz}. Reply 1 to confirm, or just tell me what to change.`,
+    textEn: `${leadEn ? `${leadEn} ` : ''}Your listing: ${l.product} (${l.variety}), ${l.qtyKg} kg, ${fmt(l.priceAzn)} ₼/kg, grade ${l.grade}, ${tomato ? 'ripeness' : 'freshness'} ${ripeEn}, harvest ${harvestAz === 'bu gün' ? 'today' : harvestAz}. Reply 1 to confirm, or just tell me what to change.`,
     ai: aiMode,
     card: {
       title: 'Elanınız hazırdır',
@@ -859,7 +868,7 @@ function sendDraftCard(l: Listing, leadAz?: string, leadEn?: string, aiMode?: Mo
         ['Miqdar', `${l.qtyKg} kq`],
         ['Qiymət', `${fmt(l.priceAzn)} ₼/kq`],
         ['Sort', `${l.grade}`],
-        ['Yetişmə', ripeAz],
+        [tomato ? 'Yetişmə' : 'Təzəlik', ripeAz],
         ['Yığım', harvestAz],
       ],
       actions: [{ label: 'Təsdiq', reply: '1' }, { label: 'Düzəliş', reply: '2' }],
@@ -877,7 +886,7 @@ function confirmListing(l: Listing) {
   }
   ledger({
     type: 'listing', tone: 'good', title: `New listing live: ${first(l.farmerId)}, ${l.qtyKg} kg ${l.variety}`, titleAz: `Yeni elan aktivdir: ${first(l.farmerId)}, ${l.qtyKg} kq ${l.variety}`,
-    detail: `Stage ${l.ripeness} · ${fmt(l.priceAzn)} ₼/kg`, detailAz: `Mərhələ ${l.ripeness} · ${fmt(l.priceAzn)} ₼/kq`,
+    detail: `${tracksRipeness(l.product) ? `Stage ${l.ripeness}` : `Grade ${l.grade}`} · ${fmt(l.priceAzn)} ₼/kg`, detailAz: `${tracksRipeness(l.product) ? `Mərhələ ${l.ripeness}` : `Sort ${l.grade}`} · ${fmt(l.priceAzn)} ₼/kq`,
   });
   say(l.farmerId, 'Elanınız aktivdir. Alıcı tapılan kimi xəbər verəcəyik.', "Your listing is live. We'll tell you as soon as a buyer is found.");
 }

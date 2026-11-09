@@ -82,9 +82,9 @@ export function speechFor(m: Pick<Message, 'text' | 'card'>, lang: 'az' | 'en' =
     if (!m.card) return spokenEn(m.text ?? '');
     const row = (k: string) => m.card!.rows.find(([key]) => key === k)?.[1];
     if (m.card.title === 'Your listing is ready') {
-      const ripe = row('Ripeness');
+      const ripe = row('Ripeness') ?? row('Freshness');
       return spokenEn([m.text, `Your listing is ready: ${row('Quantity')} of ${row('Product')?.replace(/\s*\(Local\)/, '')}, at ${row('Price')}.`,
-        ripe && !/photo/.test(ripe) ? `Ripeness: ${ripe}.` : '', 'If it is right, say "yes" or reply 1. You can also tell me what to change.'].filter(Boolean).join(' '));
+        ripe && !/photo/.test(ripe) ? `${row('Ripeness') ? 'Ripeness' : 'Freshness'}: ${ripe}.` : '', 'If it is right, say "yes" or reply 1. You can also tell me what to change.'].filter(Boolean).join(' '));
     }
     if (m.card.title === 'New order') {
       return spokenEn(`New order! ${row('Buyer')} wants ${row('Quantity')}, ${row('Total')} in total. Pickup ${row('Pickup')}. ${m.text ?? ''} To accept, say "accept" or reply 1; to decline, reply 2.`);
@@ -95,11 +95,11 @@ export function speechFor(m: Pick<Message, 'text' | 'card'>, lang: 'az' | 'en' =
   const row = (k: string) => m.card!.rows.find(([key]) => key === k)?.[1];
   let s: string;
   if (m.card.title === 'Elanınız hazırdır') {
-    const ripe = row('Yetişmə');
+    const ripe = row('Yetişmə') ?? row('Təzəlik');
     s = [
       m.text,
       `Elanınız hazırdır: ${row('Miqdar')} ${row('Məhsul')?.replace(/\s*\(Local\)/, '')}, ${row('Qiymət')}.`,
-      ripe && !/şəkil/.test(ripe) ? `Yetişmə: ${ripe}.` : '',
+      ripe && !/şəkil/.test(ripe) ? `${row('Yetişmə') ? 'Yetişmə' : 'Təzəlik'}: ${ripe}.` : '',
       'Düzdürsə "bəli" deyin və ya bir yazın. Dəyişmək istədiyinizi də deyə bilərsiniz.',
     ].filter(Boolean).join(' ');
   } else if (m.card.title === 'Yeni sifariş') {

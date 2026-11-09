@@ -4,6 +4,7 @@ import { useLive } from '@/components/live';
 import { Shell } from '@/components/Shell';
 import { useLang } from '@/components/lang';
 import { bakuTime, Medallion, produceNameL, RipenessScale, Thread } from '@/components/ui';
+import { tracksRipeness } from '@/lib/ripeness';
 import type { AiRun, AiStep } from '@/lib/types';
 
 const FIELD_LABEL: Record<string, [string, string]> = {
@@ -123,7 +124,15 @@ export default function Intake() {
                       <img src={run.photoUrl} alt={t("Farmer's produce photo", 'Fermerin məhsul fotosu')} style={{ width: '100%', height: 'clamp(100px, 19vh, 260px)', objectFit: 'cover', borderRadius: 2 }} />
                       {run.ripeness !== undefined && (
                         <>
-                          <RipenessScale stage={run.ripeness} />
+                          {/* Ripeness stages are a tomato scale; other produce shows how fresh it looks. */}
+                          {tracksRipeness(listing?.product ?? run.fields?.product?.value ?? 'Tomato') ? <RipenessScale stage={run.ripeness} /> : (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
+                              <span className="chip" style={{ color: run.freshness === 'fresh' || !run.freshness ? 'var(--olive-ink)' : 'var(--madder)', boxShadow: `inset 0 0 0 1px ${run.freshness === 'fresh' || !run.freshness ? 'var(--olive)' : 'var(--madder)'}` }}>
+                                {run.freshness === 'aging' ? t('Starting to age', 'Təzəliyini itirməyə başlayıb') : run.freshness === 'old' ? t('Looks old', 'Köhnə görünür') : t('Fresh', 'Təzə')}
+                              </span>
+                              {listing && <span className="muted">{t('Grade', 'Sort')} {listing.grade} {t('from the photo', 'fotoya görə')}</span>}
+                            </div>
+                          )}
                           <div className="muted" style={{ fontSize: 13 }}>
                             {t(`Visual estimate from the photo, ${Math.round((run.ripenessConfidence ?? 0) * 100)}% confidence`, `Fotoya əsasən vizual qiymətləndirmə, ${Math.round((run.ripenessConfidence ?? 0) * 100)}% əminlik`)}
                             {run.defects?.length ? ` · ${run.defects.join(', ')}` : t(' · no visible defects', ' · görünən qüsur yoxdur')}

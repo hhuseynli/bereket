@@ -45,7 +45,8 @@ export interface Listing {
   qtyKg: number;
   priceAzn: number; // per kg, farm gate
   ripeness: number; // 1..6 stage seen in photo today
-  ripenessConfidence: number; // 0..1
+  ripenessConfidence: number; // confidence of the photo inspection (0 = no photo yet)
+  freshness?: 'fresh' | 'aging' | 'old'; // from the photo; ripeness stages apply to tomatoes only // 0..1
   defects: string[];
   harvest: string; // ISO date the farmer harvests
   status: ListingStatus;
@@ -244,6 +245,7 @@ export interface AiRun {
   fields?: Record<string, { value: string; confidence: number }>;
   ripeness?: number;
   ripenessConfidence?: number;
+  freshness?: 'fresh' | 'aging' | 'old';
   defects?: string[];
   priceNote?: string;
   priceNoteAz?: string;
